@@ -15,6 +15,6 @@ except ImportError:
 
 from .builder import define
 from .fields import arg, out
-from .task import BidsAppTask as Task, BidsAppOutputs as Outputs
+from .task import MonaiTask as Task, MonaiOutputs as Outputs
 
 __all__ = ["arg", "out", "define", "Task", "Outputs", "__version__"]

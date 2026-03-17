@@ -1,5 +1,4 @@
 import attrs
-import re
 from pydra.compose import base
 
 
@@ -33,23 +32,9 @@ class arg(base.Arg):
     name: str, optional
         The name of the field, used when specifying a list of fields instead of a mapping
         from name to field, by default it is None
-    path: str | None
-        The path to where the input is stored within the dataset: the modality of the
-        file followed by the BIDS suffix in the form 'modality/suffix'.
     """
 
-    # the BIDS suffix that identifies the input
-    path: str | None = attrs.field()
-
-    @path.validator
-    def _path_validator(self, attribute, value):
-        """Validate the path of the input field"""
-        if value is None:
-            return
-        if not isinstance(value, str):
-            raise TypeError(f"Path must be a string, got {type(value)}")
-        if not re.match(r"\w+/\w+", value):
-            raise ValueError(f"Path must be of the form 'modality/suffix', got {value}")
+    pass
 
 
 @attrs.define(kw_only=True)
@@ -74,17 +59,6 @@ class out(base.Out):
     position : int
         The position of the output in the output list, allows for tuple unpacking of
         outputs
-    path: str, optional
-        The path to where the output is stored within the derivatives directory, the
-        namespace of the derivative followed by suffix of the output file in the
-        form 'modality/suffix'.
     """
 
-    # the path the file will be stored within the deriavtives directory
-    path: str = attrs.field(default="")
-
-    @path.validator
-    def _path_validator(self, attribute, value):
-        """Validate the path of the input field"""
-        if not isinstance(value, str):
-            raise TypeError(f"Path must be a string, got {type(value)}")
+    pass

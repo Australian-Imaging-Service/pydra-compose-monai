@@ -3,8 +3,9 @@ import typing as ty
 import re
 from pathlib import Path
 import inspect
-import docker.errors
+
 from typing import dataclass_transform
+from fileformats.application import Yaml
 from pydra.compose.base import (
     ensure_field_objects,
     build_task_class,
@@ -12,8 +13,8 @@ from pydra.compose.base import (
     extract_fields_from_class,
 )
 from .fields import arg, out
-from .task import BidsAppTask as Task
-from .task import BidsAppOutputs as Outputs
+from .task import MonaiTask as Task
+from .task import MonaiOutputs as Outputs
 
 
 logger = logging.getLogger("pydra.compose.monai")
@@ -24,7 +25,7 @@ logger = logging.getLogger("pydra.compose.monai")
     field_specifiers=(arg,),
 )
 def define(
-    wrapped: type | str | None = None,
+    wrapped: type | Yaml | None = None,
     /,
     inputs: list[str | arg] | dict[str, arg | type] | None = None,
     outputs: list[str | out] | dict[str, out | type] | type | None = None,
@@ -67,7 +68,7 @@ def define(
     def make(wrapped: str | type) -> Task:
         if inspect.isclass(wrapped):
             klass = wrapped
-            app = klass.app
+            function = klass.function
             class_name = klass.__name__
             check_explicit_fields_are_none(klass, inputs, outputs)
             parsed_inputs, parsed_outputs = extract_fields_from_class(
@@ -80,31 +81,9 @@ def define(
                 skip_fields=["function"],
             )
         else:
-            if isinstance(wrapped, Path):
-                wrapped = str(wrapped.absolute())
-            elif not isinstance(wrapped, str):
-                raise ValueError(
-                    "wrapped must be a class or a str representing either the name of a "
-                    "Docker image if executing the app as a Docker container, or the "
-                    "name of the executable to run if extending the Docker image , not "
-                    f"{wrapped!r}"
-                )
-            klass = None
-            app = wrapped
-
-            if name is None:
-                if app.startswith("/"):
-                    # Docker image name
-                    class_name = Path(app).name.split(".")[0]
-                    if class_name[0].isdigit():
-                        class_name = DIGIT_TO_WORD[class_name[0]] + class_name[1:]
-                    class_name = app.split("/")[-1].split(":")[0]
-                else:
-                    # Docker image name
-                    class_name = app.split("/")[-1].split(":")[0]
-                class_name = re.sub(r"[^a-zA-Z0-9]", "_", class_name)
-            else:
-                class_name = name
+            raise NotImplementedError(
+                "Code to read MONAI label spec and generate parsed_inputs and parsed_outputs has not been written"
+            )
 
             parsed_inputs = (
                 inputs if isinstance(inputs, dict) else {i.name: i for i in inputs}
@@ -127,10 +106,6 @@ def define(
                 input_helps={},
                 output_helps={},
             )
-        if clashing := set(parsed_inputs) & set(["exectuable", "image_tag"]):
-            raise ValueError(f"{list(clashing)} are reserved input names")
-
-        parsed_inputs["app"] = arg(name="app", type=str, default=app, path=None)
 
         defn = build_task_class(
             Task,
@@ -151,35 +126,3 @@ def define(
             raise ValueError(f"wrapped must be a class or a str, not {wrapped!r}")
         return make(wrapped)
     return make
-
-
-DIGIT_TO_WORD = {
-    "0": "zero",
-    "1": "one",
-    "2": "two",
-    "3": "three",
-    "4": "four",
-    "5": "five",
-    "6": "six",
-    "7": "seven",
-    "8": "eight",
-    "9": "nine",
-}
-
-
-def get_docker_entrypoint(image_tag: str) -> str:
-    """Pulls a given Docker image tag and inspects the image to get its
-    entrypoint/cmd
-
-    IMAGE_TAG is the tag of the Docker image to inspect"""
-    dc = docker.from_env()
-
-    dc.images.pull(image_tag)
-
-    image_attrs = dc.api.inspect_image(image_tag)["Config"]
-
-    executable = image_attrs["Entrypoint"]
-    if executable is None:
-        executable = image_attrs["Cmd"]
-
-    return executable
