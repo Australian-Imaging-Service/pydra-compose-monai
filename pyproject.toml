@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling<1.22", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pydra-compose-monai"
+description = "Pydra compose package for wrapping BIDS Apps in Pydra tasks"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "docker >=7.1.0",
+    "pydra >=1.0a",
+    "frametree-bids",
+]
+license = {file = "LICENSE"}
+authors = [{name = "Thomas G. Close", email = "tom.g.close@gmail.com"}]
+maintainers = [{name = "Thomas G. Close", email = "tom.g.close@gmail.com"}]
+keywords = ["pydra"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "pre-commit",
+]
+doc = [
+    "packaging",
+    "sphinx >=2.1.2",
+    "sphinx_rtd_theme",
+    "sphinxcontrib-apidoc ~=0.3.0",
+    "sphinxcontrib-napoleon",
+    "sphinxcontrib-versioning",
+]
+test = [
+    "pytest >= 4.4.0",
+    "pytest-cov",
+    "pytest-env",
+    "pytest-xdist",
+    "pytest-rerunfailures",
+    "codecov",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "pydra/compose/monai/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pydra"]
+include-only = ["pydra/compose/monai"]
+
+[tool.black]
+target-version = ["py38"]
+exclude = "_version.py"
+
+[tool.codespell]
+ignore-words = ".codespell-ignorewords"
+
+[tool.flake8]
+doctests = true
+per-file-ignores = [
+    "__init__.py:F401,F403"
+]
+max-line-length = 88
+select = "C,E,F,W,B,B950"
+extend-ignore = ['E203', 'E501', 'E129', 'W503']
