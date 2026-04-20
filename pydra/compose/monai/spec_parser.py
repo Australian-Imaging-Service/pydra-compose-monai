@@ -2,6 +2,7 @@
 
 import json
 import typing as ty
+from fileformats.medimage import NiftiGzX
 from pathlib import Path
 
 from .fields import arg, out
@@ -73,7 +74,6 @@ def _map_type(spec: dict) -> type:
 
     if data_type == "image" or fmt in ("hounsfield", "segmentation"):
         try:
-            from fileformats.medimage import NiftiGzX
 
             return NiftiGzX
         except ImportError:
