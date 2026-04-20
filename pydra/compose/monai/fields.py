@@ -32,9 +32,12 @@ class arg(base.Arg):
     name: str, optional
         The name of the field, used when specifying a list of fields instead of a mapping
         from name to field, by default it is None
+    path: str, optional
+        The key path within the MONAI bundle config that this field corresponds to
+        (e.g. "network_data_format/inputs/image"), by default it is None
     """
 
-    pass
+    path: str | None = attrs.field(default=None)
 
 
 @attrs.define(kw_only=True)
@@ -59,6 +62,9 @@ class out(base.Out):
     position : int
         The position of the output in the output list, allows for tuple unpacking of
         outputs
+    path: str, optional
+        The key path within the MONAI bundle config that this field corresponds to
+        (e.g. "network_data_format/outputs/pred"), by default it is None
     """
 
-    pass
+    path: str | None = attrs.field(default=None)

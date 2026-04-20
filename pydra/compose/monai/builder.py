@@ -15,6 +15,7 @@ from pydra.compose.base import (
 from .fields import arg, out
 from .task import MonaiTask as Task
 from .task import MonaiOutputs as Outputs
+from .spec_parser import parse_monai_spec, name_from_spec
 
 
 logger = logging.getLogger("pydra.compose.monai")
@@ -81,22 +82,16 @@ def define(
                 skip_fields=["function"],
             )
         else:
-            raise NotImplementedError(
-                "Code to read MONAI label spec and generate parsed_inputs and parsed_outputs has not been written"
-            )
+            # wrapped is a Path or str pointing to a MONAI bundle dir or metadata.json
+            spec_path = Path(wrapped) if not isinstance(wrapped, Path) else wrapped
+            class_name = name or name_from_spec(spec_path)
+            klass = None
+            parsed_inputs, parsed_outputs = parse_monai_spec(spec_path)
 
-            parsed_inputs = (
-                inputs if isinstance(inputs, dict) else {i.name: i for i in inputs}
-            )
-            parsed_outputs = (
-                outputs if isinstance(outputs, dict) else {o.name: o for o in outputs}
-            )
-
-            # Add in fields from base classes
+            # Add in base task fields (model_weights, arch)
             parsed_inputs.update(
-                {n: getattr(Task, n) for n in Task.BASE_ATTRS if n != "app"}
+                {n: getattr(Task, n) for n in Task.BASE_ATTRS}
             )
-            parsed_outputs.update({n: getattr(Outputs, n) for n in Outputs.BASE_ATTRS})
 
             parsed_inputs, parsed_outputs = ensure_field_objects(
                 arg_type=arg,
