@@ -116,3 +116,10 @@ def test_define_image_input_has_nifti_type(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     image_field = next(f for f in TaskCls.__attrs_attrs__ if f.name == "image")
     assert image_field.type is NiftiGzX
+
+
+def test_define_does_not_include_arch_field(metadata_json: Path):
+    """R5: `arch` is YAGNI and was removed."""
+    TaskCls = monai.define(metadata_json)
+    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    assert "arch" not in field_names

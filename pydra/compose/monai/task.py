@@ -54,18 +54,12 @@ MonaiOutputsType = ty.TypeVar("MonaiOutputsType", bound=MonaiOutputs)
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)
 class MonaiTask(base.Task[MonaiOutputsType]):
 
-    BASE_ATTRS = (
-        "model_weights",
-        "arch",
-    )
+    BASE_ATTRS = ("model_weights",)
 
     model_weights: str = fields.arg(
         name="model_weights",
         type=ty.Any,
         help="the weights of the model",
-    )
-    arch: list[tuple[str, str]] | None = fields.arg(
-        name="arch", type=ty.Any, help="the architecture of the model"
     )
 
     def _run(self, job: "Job[MonaiTask]", rerun: bool = True) -> None:
