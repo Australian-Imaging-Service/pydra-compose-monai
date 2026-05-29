@@ -5,7 +5,6 @@ from pathlib import Path
 import inspect
 
 from typing import dataclass_transform
-from fileformats.application import Yaml
 from pydra.compose.base import (
     ensure_field_objects,
     build_task_class,
@@ -26,7 +25,7 @@ logger = logging.getLogger("pydra.compose.monai")
     field_specifiers=(arg,),
 )
 def define(
-    wrapped: type | Yaml | None = None,
+    wrapped: type | str | Path | None = None,
     /,
     inputs: list[str | arg] | dict[str, arg | type] | None = None,
     outputs: list[str | out] | dict[str, out | type] | type | None = None,
