@@ -232,9 +232,11 @@ def test_from_job_does_not_match_unrelated_files(
     job = FakeJob(task, output_dir)
 
     outputs = TaskCls.Outputs._from_job(job)
-    # Either unset (None) or — if it inherits from base.Outputs default — falsy.
     val = getattr(outputs, "pred", None)
-    assert val is None or Path(str(val)).name != "unrelated_pred_data.csv"
+    import attrs as _attrs
+    assert val is None or val is _attrs.NOTHING, (
+        f"pred should be unset when no SaveImaged output file exists in output_dir; got {val!r}"
+    )
 
 
 def test_from_job_leaves_field_unset_when_save_transform_missing(
@@ -266,11 +268,10 @@ def test_from_job_leaves_field_unset_when_save_transform_missing(
 
     outputs = TaskCls.Outputs._from_job(job)
     val = getattr(outputs, "pred", None)
-    # val may be None, attrs.NOTHING (field unset), or a Path — all three
-    # are acceptable "unset" for this test; we only reject a stray Path match.
     import attrs as _attrs
-    is_unset = val is None or val is _attrs.NOTHING
-    assert is_unset or "stray" in Path(str(val)).name
+    assert val is None or val is _attrs.NOTHING, (
+        f"pred should be unset when no SaveImaged transform writes it; got {val!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

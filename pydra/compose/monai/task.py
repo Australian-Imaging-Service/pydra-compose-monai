@@ -235,8 +235,9 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         ``model_weights`` may be:
         - a directory (the bundle root itself)
         - a path to a ``.pt`` / ``.ts`` weights file inside the bundle
-        - a Hugging Face repo ID string (``org/model_name``) — in that case
-          the bundle is downloaded via ``monai.bundle.load``
+        - a MONAI Model Zoo bundle name (e.g. ``"spleen_ct_segmentation"``)
+          with no path separators or file extension — in that case the
+          bundle is downloaded via ``monai.bundle.load(source="monaihosting")``
         """
         weights = getattr(job.task, "model_weights", None)
         if weights is None:
