@@ -143,9 +143,24 @@ class MonaiTask(base.Task[MonaiOutputsType]):
                 "Expected configs/metadata.json in a parent directory."
             )
 
-        # Treat as a Hugging Face / MONAI Model Zoo repo ID and download
+        # If it's not a path on disk, the only remaining valid form is a
+        # MONAI Model Zoo bundle name (e.g. "spleen_ct_segmentation").
+        # Bundle names contain no path separators and no file extension.
+        weights_str = str(weights)
+        if (
+            "/" in weights_str
+            or "\\" in weights_str
+            or Path(weights_str).suffix != ""
+        ):
+            raise ValueError(
+                f"model_weights={weights_str!r} is not a valid MONAI bundle "
+                "reference. Provide one of: an existing bundle directory, an "
+                "existing weights file inside a bundle, or a Model Zoo bundle "
+                "name (e.g. 'spleen_ct_segmentation')."
+            )
+
         from .spec_parser import _import_monai_bundle
         bundle_load = _import_monai_bundle().load
-        logger.info("Downloading MONAI bundle %s", weights)
-        bundle_dir = bundle_load(str(weights), source="monaihosting")
+        logger.info("Downloading MONAI bundle %s", weights_str)
+        bundle_dir = bundle_load(weights_str, source="monaihosting")
         return Path(bundle_dir)
