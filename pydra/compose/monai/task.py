@@ -126,6 +126,11 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         path = Path(str(weights))
 
         if path.is_dir():
+            if not (path / "configs" / "metadata.json").is_file():
+                raise ValueError(
+                    f"Bundle directory {path} does not contain configs/metadata.json. "
+                    "Pass a path to a valid MONAI bundle root."
+                )
             return path
 
         if path.is_file():
