@@ -15,6 +15,8 @@ if ty.TYPE_CHECKING:
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)
 class MonaiOutputs(base.Outputs):
 
+    BASE_OUTPUT_ATTRS = ("stdout", "stderr", "return_code")
+
     @classmethod
     def _from_job(cls, job: "Job[MonaiTask]") -> ty.Self:
         """Collect outputs after inference by scanning the job's output directory.
@@ -32,9 +34,11 @@ class MonaiOutputs(base.Outputs):
         outputs = super()._from_job(job)
         output_dir = Path(job.output_dir)
 
+        if not output_dir.exists():
+            return outputs
+
         for field in attrs.fields(cls):
-            # Skip base Outputs fields (stdout, stderr, return_code)
-            if field.name.startswith("_") or not output_dir.exists():
+            if field.name in cls.BASE_OUTPUT_ATTRS:
                 continue
             candidates = sorted(output_dir.glob(f"{field.name}.*"))
             if candidates:

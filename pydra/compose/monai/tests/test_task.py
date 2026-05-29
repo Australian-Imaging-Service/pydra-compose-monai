@@ -105,3 +105,59 @@ def test_resolve_bundle_dir_rejects_string_with_extension(tmp_path: Path):
 
     with pytest.raises(ValueError, match="not a valid MONAI bundle"):
         task._resolve_bundle_dir(job)
+
+
+# ---------------------------------------------------------------------------
+# _from_job — base output field handling
+# ---------------------------------------------------------------------------
+
+
+def test_from_job_does_not_overwrite_base_output_fields(tmp_path, monkeypatch):
+    """R2: fields explicitly listed in BASE_OUTPUT_ATTRS must not be overwritten
+    by stray files in the output dir, even if a bundle declares an output with the
+    same name (e.g. 'stdout') and a matching file exists in the output dir."""
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # Drop files whose names exactly match base output field names
+    (output_dir / "stdout.log").write_text("noise")
+    (output_dir / "stderr.txt").write_text("noise")
+
+    # Build a bundle with an output field literally named 'stdout' so that the
+    # glob f"{field.name}.*" == "stdout.*" would match stdout.log on unpatched code.
+    bundle_meta = tmp_path / "configs" / "metadata.json"
+    bundle_meta.parent.mkdir(parents=True)
+    bundle_meta.write_text(
+        json.dumps({
+            "name": "stdout_test_bundle",
+            "network_data_format": {
+                "inputs": {},
+                "outputs": {
+                    "stdout": {"type": "image"},
+                },
+            },
+        })
+    )
+    TaskCls = monai.define(bundle_meta)
+    task = TaskCls(model_weights=str(tmp_path))
+    job = FakeJob(task, output_dir)
+
+    OutputsCls = TaskCls.Outputs
+
+    # On unpatched code the field 'stdout' is an attrs field and the glob
+    # 'stdout.*' matches stdout.log — so _from_job would set outputs.stdout to
+    # a Path object pointing at the noise file.
+    # After the fix (BASE_OUTPUT_ATTRS skip), the field must be left at its
+    # default value (attrs.NOTHING or None), not overwritten by the stray file.
+    outputs = OutputsCls._from_job(job)
+
+    import attrs as _attrs
+
+    stdout_field_names = {f.name for f in _attrs.fields(OutputsCls)} & {"stdout", "stderr", "return_code"}
+    for name in stdout_field_names:
+        val = getattr(outputs, name, None)
+        # Must NOT be a Path (i.e. must not have been set from the stray log file)
+        assert not isinstance(val, Path), (
+            f"_from_job overwrote {name!r} with {val!r} from a stray file"
+        )
