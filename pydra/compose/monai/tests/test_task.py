@@ -161,3 +161,113 @@ def test_from_job_does_not_overwrite_base_output_fields(tmp_path, monkeypatch):
         assert not isinstance(val, Path), (
             f"_from_job overwrote {name!r} with {val!r} from a stray file"
         )
+
+
+# ---------------------------------------------------------------------------
+# _from_job — R1 postprocessing-driven path resolution
+# ---------------------------------------------------------------------------
+
+
+def test_from_job_resolves_output_from_save_transform(
+    make_synthetic_bundle, tmp_path
+):
+    """R1: output path is constructed from SaveImaged postfix/ext and the input
+    image filename, not from a loose glob match.
+
+    Adaptation: image field is typed as ty.Any via metadata_overrides so that
+    task construction accepts a plain string path without fileformats validation.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    # Use metadata_overrides to give the image field type ty.Any, avoiding
+    # NiftiGzX file-existence/format validation during task construction.
+    # We must clear "modality" as well (set to ""), because _map_type maps
+    # modality="MRI" to NiftiGzX regardless of "type"; deep-merge preserves it.
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        }
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # Simulate what MONAI's SaveImaged would write: T1w_seg.nii.gz
+    # (DEFAULT_INFERENCE has SaveImaged with output_postfix="seg", no output_ext -> .nii.gz)
+    expected = output_dir / "T1w_seg.nii.gz"
+    expected.write_bytes(b"fake nifti")
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    assert Path(str(outputs.pred)) == expected
+
+
+def test_from_job_does_not_match_unrelated_files(
+    make_synthetic_bundle, tmp_path
+):
+    """R1: a file whose name *contains* the field name but doesn't match the
+    SaveImaged postfix must NOT be picked up.
+
+    Adaptation: image field is typed as ty.Any via metadata_overrides.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        }
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # Drop a misleading file: contains "pred" but is not the SaveImaged output
+    (output_dir / "unrelated_pred_data.csv").write_text("noise")
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    # Either unset (None) or — if it inherits from base.Outputs default — falsy.
+    val = getattr(outputs, "pred", None)
+    assert val is None or Path(str(val)).name != "unrelated_pred_data.csv"
+
+
+def test_from_job_leaves_field_unset_when_save_transform_missing(
+    make_synthetic_bundle, tmp_path
+):
+    """R1: if a bundle's postprocessing doesn't write a given output, the field
+    is left unset (no glob fallback).
+
+    Adaptation: image field is typed as ty.Any via metadata_overrides.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    # Bundle whose postprocessing writes no images at all; image is ty.Any
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        },
+        inference_overrides={"postprocessing": {"_target_": "Compose", "transforms": []}},
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "pred.nii.gz").write_bytes(b"stray match")
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    val = getattr(outputs, "pred", None)
+    # val may be None, attrs.NOTHING (field unset), or a Path — all three
+    # are acceptable "unset" for this test; we only reject a stray Path match.
+    import attrs as _attrs
+    is_unset = val is None or val is _attrs.NOTHING
+    assert is_unset or "stray" in Path(str(val)).name
