@@ -111,3 +111,114 @@ def test_name_from_spec_uses_dir_name(tmp_path: Path):
     name = name_from_spec(tmp_path)
     assert name
     assert name.isidentifier()
+
+
+import sys
+
+
+# ---------------------------------------------------------------------------
+# _map_type — additional rules
+# ---------------------------------------------------------------------------
+
+
+def test_map_type_dicom_format(tmp_path: Path):
+    from fileformats.medimage import DicomSeries
+
+    metadata = {
+        "network_data_format": {
+            "inputs": {"image": {"format": "dicom"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    parsed_inputs, _ = parse_monai_spec(p)
+    assert parsed_inputs["image"].type is DicomSeries
+
+
+def test_map_type_dicom_series_type(tmp_path: Path):
+    from fileformats.medimage import DicomSeries
+
+    metadata = {
+        "network_data_format": {
+            "inputs": {"image": {"type": "dicom_series"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    parsed_inputs, _ = parse_monai_spec(p)
+    assert parsed_inputs["image"].type is DicomSeries
+
+
+def test_map_type_ct_modality(tmp_path: Path):
+    metadata = {
+        "network_data_format": {
+            "inputs": {"image": {"type": "image", "modality": "CT"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    parsed_inputs, _ = parse_monai_spec(p)
+    assert parsed_inputs["image"].type is NiftiGzX
+
+
+def test_map_type_segmentation_output(tmp_path: Path):
+    metadata = {
+        "network_data_format": {
+            "inputs": {},
+            "outputs": {"pred": {"type": "image", "format": "segmentation"}},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    _, parsed_outputs = parse_monai_spec(p)
+    assert parsed_outputs["pred"].type is NiftiGzX
+
+
+# ---------------------------------------------------------------------------
+# name_from_spec — edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_name_from_spec_sanitises_punctuation(tmp_path: Path):
+    metadata = {"name": "foo-bar.baz_qux v2"}
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    name = name_from_spec(p)
+    assert name == "FooBarBazQuxV2"
+    assert name.isidentifier()
+
+
+def test_name_from_spec_handles_missing_metadata_name(tmp_path: Path):
+    # Metadata without "name" field
+    metadata = {"network_data_format": {"inputs": {}, "outputs": {}}}
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    name = name_from_spec(p)
+    # Falls back to file stem
+    assert name.isidentifier()
+
+
+# ---------------------------------------------------------------------------
+# _import_monai_bundle — sys.path shadow guard
+# ---------------------------------------------------------------------------
+
+
+def test_import_monai_bundle_resolves_pypi_under_shadow():
+    """Even if pydra/compose is on sys.path, monai.bundle must resolve to the
+    PyPI package, not to pydra.compose.monai."""
+    from pydra.compose.monai.spec_parser import _import_monai_bundle
+
+    shadow = str(Path(__file__).parent.parent.parent)  # pydra/compose
+    sys.path.insert(0, shadow)
+    try:
+        mod = _import_monai_bundle()
+        # The PyPI monai package's bundle module has ConfigParser
+        assert hasattr(mod, "ConfigParser")
+        # And its __file__ is NOT inside pydra/compose/monai
+        assert "pydra/compose/monai" not in (mod.__file__ or "")
+    finally:
+        if shadow in sys.path:
+            sys.path.remove(shadow)
