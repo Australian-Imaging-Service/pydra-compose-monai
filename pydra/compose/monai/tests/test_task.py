@@ -372,3 +372,75 @@ def test_run_excludes_base_attrs_from_dataset_data(
 
     data = parser.set_calls["dataset#data"]
     assert "model_weights" not in data[0]
+
+
+# ---------------------------------------------------------------------------
+# _resolve_bundle_dir — weights-file and missing-input branches
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_bundle_dir_walks_up_from_weights_file(
+    make_synthetic_bundle, tmp_path
+):
+    """A .pt file inside a bundle tree: walk-up must return the bundle root.
+
+    Adaptation: the default bundle metadata maps image to NiftiGzX (modality=MRI).
+    We use metadata_overrides to make image type=generic/modality="" so the task
+    can be constructed with a plain string path without fileformats validation.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        },
+        subdir="bundle_with_weights",
+    )
+    # Create a weights file inside the bundle tree (bundle/models/model.pt)
+    models = bundle / "models"
+    models.mkdir()
+    weights = models / "model.pt"
+    weights.write_bytes(b"")
+
+    bundle_root = weights.parent.parent  # models/model.pt -> bundle root
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(model_weights=str(weights), image="dummy.nii.gz")
+
+    job = FakeJob(task, tmp_path / "out")
+    assert task._resolve_bundle_dir(job) == bundle_root
+
+
+def test_resolve_bundle_dir_raises_for_orphan_weights_file(tmp_path):
+    """A .pt file with no configs/metadata.json in any ancestor must raise."""
+    orphan = tmp_path / "orphan.pt"
+    orphan.write_bytes(b"")
+
+    bundle_meta = tmp_path / "tmpconfig" / "metadata.json"
+    bundle_meta.parent.mkdir(parents=True)
+    bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
+    TaskCls = monai.define(bundle_meta)
+    task = TaskCls(model_weights=str(orphan))
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, tmp_path / "out")
+    with pytest.raises(ValueError, match="Cannot locate bundle root"):
+        task._resolve_bundle_dir(job)
+
+
+def test_resolve_bundle_dir_raises_when_model_weights_missing(tmp_path):
+    """model_weights=None must raise with an actionable message."""
+    bundle_meta = tmp_path / "tmpconfig" / "metadata.json"
+    bundle_meta.parent.mkdir(parents=True)
+    bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
+    TaskCls = monai.define(bundle_meta)
+    task = TaskCls(model_weights=None)
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, tmp_path / "out")
+    with pytest.raises(ValueError, match="model_weights must be set"):
+        task._resolve_bundle_dir(job)
