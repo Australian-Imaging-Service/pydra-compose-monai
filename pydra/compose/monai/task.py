@@ -184,7 +184,7 @@ class MonaiTask(base.Task[MonaiOutputsType]):
 
         parser = ConfigParser()
         parser.read_meta(str(bundle_dir / "configs" / "metadata.json"))
-        parser.load_config_file(str(bundle_dir / "configs" / "inference.json"))
+        parser.read_config(str(bundle_dir / "configs" / "inference.json"))
 
         # Build the dataset entries from job inputs, keyed by field name.
         # Each entry in network_data_format.inputs becomes a key in the data dict.

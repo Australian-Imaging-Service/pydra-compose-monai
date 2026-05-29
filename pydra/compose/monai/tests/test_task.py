@@ -294,7 +294,7 @@ def test_run_loads_metadata_and_inference_configs(
     parser.read_meta.assert_called_once_with(
         str(bundle / "configs" / "metadata.json")
     )
-    parser.load_config_file.assert_called_once_with(
+    parser.read_config.assert_called_once_with(
         str(bundle / "configs" / "inference.json")
     )
 
