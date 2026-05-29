@@ -73,3 +73,31 @@ def test_synthetic_bundle_via_pydra_submitter(synthetic_bundle_dir, t1w_patch, t
     pred = getattr(result.outputs, "pred", None)
     assert pred is not None, f"pred output not set; outputs={result.outputs!r}"
     assert Path(str(pred)).is_file()
+
+
+@pytest.mark.integration
+@pytest.mark.network
+def test_real_bundle_define_smoke(tmp_path):
+    """Smoke test: monai.bundle.download + define() against a published bundle.
+    Catches drift in MONAI's bundle layout or network_data_format schema."""
+    from pydra.compose.monai.spec_parser import _import_monai_bundle
+
+    bundle_mod = _import_monai_bundle()
+    # monai.bundle.load returns a model object, not a path; use download() instead
+    # which downloads the zip and extracts it to bundle_dir/spleen_ct_segmentation
+    bundle_mod.download(
+        "spleen_ct_segmentation", bundle_dir=str(tmp_path), source="monaihosting"
+    )
+    bundle_dir = tmp_path / "spleen_ct_segmentation"
+
+    TaskCls = monai.define(bundle_dir)
+
+    assert TaskCls.__name__
+    assert TaskCls.__name__.isidentifier()
+
+    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    assert "model_weights" in field_names
+    assert "image" in field_names, f"expected 'image' in input fields; got {field_names}"
+
+    output_names = {f.name for f in TaskCls.Outputs.__attrs_attrs__}
+    assert "pred" in output_names, f"expected 'pred' in output fields; got {output_names}"
