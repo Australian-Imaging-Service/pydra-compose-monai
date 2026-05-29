@@ -231,3 +231,16 @@ def test_synthetic_bundle_fixture_creates_valid_bundle(synthetic_bundle_dir: Pat
     parsed_inputs, parsed_outputs = parse_monai_spec(synthetic_bundle_dir)
     assert "image" in parsed_inputs
     assert "pred" in parsed_outputs
+
+
+# ---------------------------------------------------------------------------
+# Known limitations (see spec)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skip(reason="L2: scalar/classification outputs not yet supported")
+def test_parse_scalar_output_type():
+    """When implemented: a `network_data_format.outputs` entry of type
+    'scalar' or 'classification' should map to a sensible Python type
+    (float/int/list), not fall through to ty.Any."""
+    raise NotImplementedError

@@ -444,3 +444,22 @@ def test_resolve_bundle_dir_raises_when_model_weights_missing(tmp_path):
     job = FakeJob(task, tmp_path / "out")
     with pytest.raises(ValueError, match="model_weights must be set"):
         task._resolve_bundle_dir(job)
+
+
+# ---------------------------------------------------------------------------
+# Known limitations (see spec)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skip(reason="L1: runtime DICOM input through _run not yet supported")
+def test_run_with_dicom_input():
+    """When implemented: a task whose `image` field is a DicomSeries should
+    flow through _run end-to-end, with appropriate transform handling."""
+    raise NotImplementedError
+
+
+@pytest.mark.skip(reason="L3: bundles without top-level output_dir key not yet handled")
+def test_run_handles_bundle_without_output_dir_key():
+    """When implemented: if inference.json doesn't expose @output_dir, _run
+    should detect this and warn rather than silently ignoring the override."""
+    raise NotImplementedError
