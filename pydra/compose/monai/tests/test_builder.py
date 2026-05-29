@@ -75,3 +75,44 @@ def test_define_class_name_from_metadata(metadata_json: Path):
 def test_define_explicit_name_overrides_metadata(metadata_json: Path):
     TaskCls = monai.define(metadata_json, name="MyCustomTask")
     assert TaskCls.__name__ == "MyCustomTask"
+
+
+@pytest.fixture
+def bundle_dir(tmp_path: Path) -> Path:
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "metadata.json").write_text(json.dumps(MINIMAL_METADATA))
+    return tmp_path
+
+
+def test_define_accepts_path_object(metadata_json: Path):
+    TaskCls = monai.define(Path(metadata_json))
+    assert TaskCls is not None
+
+
+def test_define_accepts_str_path(metadata_json: Path):
+    TaskCls = monai.define(str(metadata_json))
+    assert TaskCls is not None
+
+
+def test_define_from_bundle_dir(bundle_dir: Path):
+    TaskCls = monai.define(bundle_dir)
+    field_names = [f.name for f in TaskCls.__attrs_attrs__]
+    assert "image" in field_names
+
+
+def test_define_includes_base_attrs(metadata_json: Path):
+    TaskCls = monai.define(metadata_json)
+    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    assert "model_weights" in field_names
+
+
+def test_define_rejects_non_path_non_class():
+    with pytest.raises(ValueError, match="must be a class or a str"):
+        monai.define(42)
+
+
+def test_define_image_input_has_nifti_type(metadata_json: Path):
+    TaskCls = monai.define(metadata_json)
+    image_field = next(f for f in TaskCls.__attrs_attrs__ if f.name == "image")
+    assert image_field.type is NiftiGzX
