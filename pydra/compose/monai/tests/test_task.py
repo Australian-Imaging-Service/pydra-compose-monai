@@ -271,3 +271,104 @@ def test_from_job_leaves_field_unset_when_save_transform_missing(
     import attrs as _attrs
     is_unset = val is None or val is _attrs.NOTHING
     assert is_unset or "stray" in Path(str(val)).name
+
+
+# ---------------------------------------------------------------------------
+# _run orchestration (mocked evaluator)
+# ---------------------------------------------------------------------------
+
+
+def test_run_loads_metadata_and_inference_configs(
+    mock_config_parser_with_task, tmp_path
+):
+    bundle, TaskCls, parser, evaluator = mock_config_parser_with_task
+    output_dir = tmp_path / "out"
+
+    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, output_dir)
+    task._run(job)
+
+    parser.read_meta.assert_called_once_with(
+        str(bundle / "configs" / "metadata.json")
+    )
+    parser.load_config_file.assert_called_once_with(
+        str(bundle / "configs" / "inference.json")
+    )
+
+
+def test_run_sets_dataset_data_from_inputs(
+    mock_config_parser_with_task, tmp_path
+):
+    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
+    output_dir = tmp_path / "out"
+
+    task = TaskCls(
+        model_weights=str(bundle),
+        image="/data/T1w.nii.gz",
+    )
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, output_dir)
+    task._run(job)
+
+    # parser["dataset#data"] should have been set to a one-element list of dicts
+    assert "dataset#data" in parser.set_calls
+    data = parser.set_calls["dataset#data"]
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0]["image"] == "/data/T1w.nii.gz"
+
+
+def test_run_sets_output_dir(
+    mock_config_parser_with_task, tmp_path
+):
+    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
+    output_dir = tmp_path / "out"
+
+    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, output_dir)
+    task._run(job)
+
+    assert parser.set_calls.get("output_dir") == str(output_dir)
+    assert output_dir.exists()
+
+
+def test_run_calls_evaluator_run_once(
+    mock_config_parser_with_task, tmp_path
+):
+    bundle, TaskCls, _parser, evaluator = mock_config_parser_with_task
+    output_dir = tmp_path / "out"
+
+    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, output_dir)
+    task._run(job)
+
+    evaluator.run.assert_called_once()
+
+
+def test_run_excludes_base_attrs_from_dataset_data(
+    mock_config_parser_with_task, tmp_path
+):
+    """model_weights must not appear as a key in dataset#data."""
+    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
+    output_dir = tmp_path / "out"
+
+    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    job = FakeJob(task, output_dir)
+    task._run(job)
+
+    data = parser.set_calls["dataset#data"]
+    assert "model_weights" not in data[0]

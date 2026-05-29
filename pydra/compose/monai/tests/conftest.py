@@ -146,14 +146,8 @@ def bundle_with_weights_file(make_synthetic_bundle) -> Path:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def mock_config_parser(monkeypatch):
-    """Patch monai.bundle.ConfigParser so unit tests don't instantiate networks.
-
-    Returns (parser_mock, evaluator_mock). The parser supports __setitem__ so
-    tests can assert on `parser['dataset#data'] = ...`. The evaluator's
-    `.run()` is a MagicMock for `assert_called_once()`.
-    """
+def _make_mock_parser_and_evaluator():
+    """Build the (parser, evaluator) mock pair used by mock_config_parser fixtures."""
     parser = MagicMock(name="ConfigParser_instance")
     evaluator = MagicMock(name="evaluator")
     parser.get_parsed_content.return_value = evaluator
@@ -165,14 +159,59 @@ def mock_config_parser(monkeypatch):
         parser.set_calls[key] = value
 
     parser.__setitem__.side_effect = record_setitem
-
-    # Patch the ConfigParser class used inside _run, which goes through
-    # _import_monai_bundle().ConfigParser.
-    import monai.bundle as monai_bundle
-
-    monkeypatch.setattr(monai_bundle, "ConfigParser", MagicMock(return_value=parser))
-
     return parser, evaluator
+
+
+def _activate_mock_config_parser(monkeypatch, parser):
+    """Patch monai.bundle.ConfigParser on the real module to return *parser*."""
+    from pydra.compose.monai.spec_parser import _import_monai_bundle
+
+    monai_bundle_mod = _import_monai_bundle()
+    monkeypatch.setattr(monai_bundle_mod, "ConfigParser", MagicMock(return_value=parser))
+
+
+@pytest.fixture
+def mock_config_parser(monkeypatch):
+    """Patch monai.bundle.ConfigParser so unit tests don't instantiate networks.
+
+    Returns (parser_mock, evaluator_mock). The parser supports __setitem__ so
+    tests can assert on `parser['dataset#data'] = ...`. The evaluator's
+    `.run()` is a MagicMock for `assert_called_once()`.
+
+    NOTE: This fixture patches ConfigParser globally, so any call to
+    monai.define() in the same test body will also use the mock. Tests that
+    need a real TaskCls should use mock_config_parser_with_task instead.
+    """
+    parser, evaluator = _make_mock_parser_and_evaluator()
+    _activate_mock_config_parser(monkeypatch, parser)
+    return parser, evaluator
+
+
+@pytest.fixture
+def mock_config_parser_with_task(monkeypatch, make_synthetic_bundle):
+    """Like mock_config_parser, but also builds TaskCls before the patch activates.
+
+    monai.define() is called with a generic-typed image bundle BEFORE
+    monai.bundle.ConfigParser is replaced, so the task class is constructed
+    correctly.  Returns (bundle_dir, TaskCls, parser, evaluator).
+    """
+    from pydra.compose import monai as _monai
+
+    # Step 1: build the bundle and TaskCls using the REAL ConfigParser
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        }
+    )
+    TaskCls = _monai.define(bundle)
+
+    # Step 2: set up the mock after TaskCls is ready
+    parser, evaluator = _make_mock_parser_and_evaluator()
+    _activate_mock_config_parser(monkeypatch, parser)
+
+    return bundle, TaskCls, parser, evaluator
 
 
 # ---------------------------------------------------------------------------
