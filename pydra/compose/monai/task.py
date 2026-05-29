@@ -12,6 +12,19 @@ if ty.TYPE_CHECKING:
     from pydra.engine.job import Job
 
 
+def _job_output_dir(job) -> Path:
+    """Return the output directory for a job.
+
+    The real pydra ``Job`` exposes ``cache_dir`` (= ``cache_root / checksum``)
+    as its working/output directory.  The ``FakeJob`` stub used in unit tests
+    carries an explicit ``output_dir`` attribute instead.  This helper
+    abstracts over both so that ``_run`` and ``_from_job`` work with either.
+    """
+    if hasattr(job, "output_dir"):
+        return Path(job.output_dir)
+    return Path(job.cache_dir)
+
+
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)
 class MonaiOutputs(base.Outputs):
 
@@ -28,7 +41,7 @@ class MonaiOutputs(base.Outputs):
         ``output_postfix`` and ``output_ext`` and the source image's filename.
         """
         outputs = super()._from_job(job)
-        output_dir = Path(job.output_dir)
+        output_dir = _job_output_dir(job)
 
         if not output_dir.exists():
             return outputs
@@ -45,7 +58,7 @@ class MonaiOutputs(base.Outputs):
         input_stem = _first_input_stem(job.task)
 
         for field in attrs.fields(cls):
-            if field.name in cls.BASE_OUTPUT_ATTRS:
+            if field.name.startswith("_") or field.name in cls.BASE_OUTPUT_ATTRS:
                 continue
             spec = save_specs.get(field.name)
             if spec is None:
@@ -135,8 +148,15 @@ def _extract_transforms(node) -> list:
 
 
 def _first_input_stem(task) -> "str | None":
-    """Return the stem (sans image extension) of the first non-BASE input."""
+    """Return the stem (sans image extension) of the first non-BASE input.
+
+    Skips pydra-internal fields (those whose names start with ``_``) and
+    the declared BASE_ATTRS so only user-facing image / data fields are
+    considered.
+    """
     for field in attrs.fields(type(task)):
+        if field.name.startswith("_"):
+            continue
         if field.name in MonaiTask.BASE_ATTRS:
             continue
         val = getattr(task, field.name, None)
@@ -179,7 +199,7 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         ConfigParser = _import_monai_bundle().ConfigParser
 
         bundle_dir = self._resolve_bundle_dir(job)
-        output_dir = Path(job.output_dir)
+        output_dir = _job_output_dir(job)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         parser = ConfigParser()

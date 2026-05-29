@@ -54,3 +54,22 @@ def test_synthetic_bundle_end_to_end(synthetic_bundle_dir, t1w_patch, tmp_path):
 
     outputs = TaskCls.Outputs._from_job(job)
     assert Path(str(outputs.pred)) == expected
+
+
+@pytest.mark.integration
+def test_synthetic_bundle_via_pydra_submitter(synthetic_bundle_dir, t1w_patch, tmp_path):
+    """Run the synthetic bundle through pydra's Submitter, verifying that
+    field metadata and outputs round-trip through the engine."""
+    from pydra.engine.submitter import Submitter
+
+    TaskCls = monai.define(synthetic_bundle_dir)
+    task = TaskCls(model_weights=str(synthetic_bundle_dir), image=str(t1w_patch))
+
+    with Submitter(worker="cf", cache_root=str(tmp_path / "cache")) as sub:
+        result = sub(task)
+
+    # Result should have an .outputs attribute with our parsed-out `pred`
+    assert result.outputs is not None
+    pred = getattr(result.outputs, "pred", None)
+    assert pred is not None, f"pred output not set; outputs={result.outputs!r}"
+    assert Path(str(pred)).is_file()
