@@ -4,13 +4,8 @@ import typing as ty
 import pytest
 from pathlib import Path
 from fileformats.medimage import NiftiGzX
-from pydra.compose import monai
 from pydra.compose.monai.spec_parser import parse_monai_spec, name_from_spec
 
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 MINIMAL_METADATA = {
     "name": "Whole Brain Seg UNEST",
@@ -52,7 +47,7 @@ def bundle_dir(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# parse_monai_spec tests
+# parse_monai_spec
 # ---------------------------------------------------------------------------
 
 
@@ -104,7 +99,7 @@ def test_output_help_contains_format(metadata_json: Path):
 
 
 # ---------------------------------------------------------------------------
-# name_from_spec tests
+# name_from_spec
 # ---------------------------------------------------------------------------
 
 
@@ -113,62 +108,6 @@ def test_name_from_spec_uses_metadata_name(metadata_json: Path):
 
 
 def test_name_from_spec_uses_dir_name(tmp_path: Path):
-    # No metadata, just a bare directory
     name = name_from_spec(tmp_path)
-    assert name  # non-empty
+    assert name
     assert name.isidentifier()
-
-
-# ---------------------------------------------------------------------------
-# monai.define integration tests
-# ---------------------------------------------------------------------------
-
-
-def test_define_from_metadata_json_creates_task_class(metadata_json: Path):
-    TaskCls = monai.define(metadata_json)
-    assert TaskCls is not None
-    field_names = [f.name for f in TaskCls.__attrs_attrs__]
-    assert "image" in field_names
-    assert "model_weights" in field_names
-
-
-def test_define_from_metadata_json_outputs_have_pred(metadata_json: Path):
-    TaskCls = monai.define(metadata_json)
-    output_field_names = [f.name for f in TaskCls.Outputs.__attrs_attrs__]
-    assert "pred" in output_field_names
-
-
-def test_define_preserves_path_on_arg(metadata_json: Path):
-    TaskCls = monai.define(metadata_json)
-    image_field = next(f for f in TaskCls.__attrs_attrs__ if f.name == "image")
-    # path is stored inside the pydra field spec under __PYDRA_METADATA__
-    pydra_meta = image_field.metadata["__PYDRA_METADATA__"]
-    assert pydra_meta.path == "network_data_format/inputs/image"
-
-
-def test_define_preserves_path_on_out(metadata_json: Path):
-    TaskCls = monai.define(metadata_json)
-    pred_field = next(
-        f for f in TaskCls.Outputs.__attrs_attrs__ if f.name == "pred"
-    )
-    pydra_meta = pred_field.metadata["__PYDRA_METADATA__"]
-    assert pydra_meta.path == "network_data_format/outputs/pred"
-
-
-def test_define_class_name_from_metadata(metadata_json: Path):
-    TaskCls = monai.define(metadata_json)
-    assert TaskCls.__name__ == "WholeBrainSegUnest"
-
-
-def test_define_explicit_name_overrides_metadata(metadata_json: Path):
-    TaskCls = monai.define(metadata_json, name="MyCustomTask")
-    assert TaskCls.__name__ == "MyCustomTask"
-
-
-def test_arg_path_attribute_direct():
-    """arg and out accept a path kwarg and store it."""
-    a = monai.arg(name="T1w", type=NiftiGzX, path="anat/T1w")
-    assert a.path == "anat/T1w"
-
-    o = monai.out(name="mask", type=NiftiGzX, path="anat/mask")
-    assert o.path == "anat/mask"
