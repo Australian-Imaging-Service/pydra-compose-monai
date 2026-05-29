@@ -222,3 +222,12 @@ def test_import_monai_bundle_resolves_pypi_under_shadow():
     finally:
         if shadow in sys.path:
             sys.path.remove(shadow)
+
+
+def test_synthetic_bundle_fixture_creates_valid_bundle(synthetic_bundle_dir: Path):
+    """Smoke test: the fixture writes a parseable metadata.json."""
+    assert (synthetic_bundle_dir / "configs" / "metadata.json").exists()
+    assert (synthetic_bundle_dir / "configs" / "inference.json").exists()
+    parsed_inputs, parsed_outputs = parse_monai_spec(synthetic_bundle_dir)
+    assert "image" in parsed_inputs
+    assert "pred" in parsed_outputs
