@@ -49,6 +49,8 @@ test = [
     "pytest-xdist",
     "pytest-rerunfailures",
     "codecov",
+    "pytorch-ignite",   # required by MONAI's SupervisedEvaluator (integration tests)
+    "huggingface_hub",  # required by monai.bundle.download on MONAI >= 1.5.2 (network test)
 ]
 
 [tool.hatch.version]
