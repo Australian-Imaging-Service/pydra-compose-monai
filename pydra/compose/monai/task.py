@@ -18,7 +18,6 @@ if ty.TYPE_CHECKING:
 class MonaiOutputs(base.Outputs):
 
     BASE_OUTPUT_ATTRS = ("stdout", "stderr", "return_code")
-    _IMAGE_EXTS = (".nii.gz", ".nii", ".mha", ".mhd", ".nrrd", ".dcm")
 
     @classmethod
     def _from_job(cls, job: "Job[MonaiTask]") -> ty.Self:
@@ -59,7 +58,7 @@ class MonaiOutputs(base.Outputs):
             if input_stem is None:
                 continue
             postfix = spec.get("output_postfix", "")
-            ext = spec.get("output_ext", ".nii.gz")
+            ext = spec.get("output_ext") or _default_ext_for(field.type)
             if not ext.startswith("."):
                 ext = "." + ext
             if postfix:
@@ -84,6 +83,36 @@ MonaiOutputsType = ty.TypeVar("MonaiOutputsType", bound=MonaiOutputs)
 # ---------------------------------------------------------------------------
 # Module-level helpers for R1 postprocessing-driven output path resolution
 # ---------------------------------------------------------------------------
+
+
+def _extensions_for(field_type) -> "tuple[str, ...]":
+    """Return possible file extensions for a fileformats field type.
+
+    Returns an empty tuple for non-fileformats types (e.g. ``ty.Any``) so the
+    caller can fall back to a generic ``Path.stem``.
+
+    Uses ``possible_exts`` (a class-level list on every ``FileSet`` subclass),
+    filtering out ``None`` entries that appear on directory-based types like
+    ``DicomSeries`` which have no single canonical extension.
+    """
+    try:
+        from fileformats.core import FileSet
+    except ImportError:
+        return ()
+    if isinstance(field_type, type) and issubclass(field_type, FileSet):
+        return tuple(e for e in field_type.possible_exts if e is not None)
+    return ()
+
+
+def _default_ext_for(field_type) -> str:
+    """Return the primary file extension for a fileformats field type.
+
+    Falls back to ``.nii.gz`` — MONAI's de-facto default for image outputs,
+    matching SaveImage(d) behaviour — when the type is unknown or has no
+    canonical single-file extension (e.g. ``DicomSeries``).
+    """
+    exts = _extensions_for(field_type)
+    return exts[0] if exts else ".nii.gz"
 
 
 def _parse_save_transforms(inference_json: Path) -> "dict[str, dict]":
@@ -114,7 +143,7 @@ def _parse_save_transforms(inference_json: Path) -> "dict[str, dict]":
         for key in keys:
             out[str(key)] = {
                 "output_postfix": t.get("output_postfix", ""),
-                "output_ext": t.get("output_ext", ".nii.gz"),
+                "output_ext": t.get("output_ext"),
             }
     return out
 
@@ -142,6 +171,10 @@ def _first_input_stem(task) -> "str | None":
     Skips pydra-internal fields (those whose names start with ``_``) and
     the declared BASE_ATTRS so only user-facing image / data fields are
     considered.
+
+    Uses the field's fileformats type to determine which extensions to strip.
+    Falls back to ``_stem_of`` when the type is unknown (e.g. ``ty.Any``),
+    which handles compound extensions such as ``.nii.gz``.
     """
     for field in get_fields(task):
         if field.name in MonaiTask.BASE_ATTRS:
@@ -150,11 +183,50 @@ def _first_input_stem(task) -> "str | None":
         if val is None:
             continue
         name = Path(str(val)).name
-        for ext in MonaiOutputs._IMAGE_EXTS:
-            if name.lower().endswith(ext):
+        for ext in _extensions_for(field.type):
+            if name.lower().endswith(ext.lower()):
                 return name[: -len(ext)]
-        return Path(name).stem
+        return _stem_of(name)
     return None
+
+
+def _stem_of(name: str) -> str:
+    """Return the stem of a filename, handling compound extensions like ``.nii.gz``.
+
+    ``Path.stem`` only strips the last suffix (``"T1w.nii.gz"`` → ``"T1w.nii"``).
+    This helper checks all ``possible_exts`` on every ``fileformats.medimage``
+    format class (longest extensions first to avoid ``.gz`` matching before
+    ``.nii.gz``), then falls back to ``Path(name).stem`` for truly unknown
+    formats.
+    """
+    try:
+        import fileformats.medimage as _medimage
+        from fileformats.core import FileSet
+
+        # Collect all non-None extensions from medimage classes, deduplicated,
+        # sorted longest-first so compound extensions beat their suffixes.
+        seen: set[str] = set()
+        exts: list[str] = []
+        for _name in dir(_medimage):
+            cls = getattr(_medimage, _name, None)
+            if (
+                isinstance(cls, type)
+                and issubclass(cls, FileSet)
+                and cls is not FileSet
+            ):
+                for ext in getattr(cls, "possible_exts", []) or []:
+                    if ext and ext not in seen:
+                        seen.add(ext)
+                        exts.append(ext)
+        exts.sort(key=len, reverse=True)  # longest first
+
+        name_lower = name.lower()
+        for ext in exts:
+            if name_lower.endswith(ext.lower()):
+                return name[: -len(ext)]
+    except Exception:
+        pass
+    return Path(name).stem
 
 
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)

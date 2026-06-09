@@ -464,3 +464,186 @@ def test_run_handles_bundle_without_output_dir_key():
     """When implemented: if inference.json doesn't expose @output_dir, _run
     should detect this and warn rather than silently ignoring the override."""
     raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# _extensions_for / _default_ext_for helpers (unit tests)
+# ---------------------------------------------------------------------------
+
+
+def test_extensions_for_niftgzx():
+    """_extensions_for returns the NiftiGzX canonical extension."""
+    from fileformats.medimage import NiftiGzX
+    from pydra.compose.monai.task import _extensions_for
+
+    exts = _extensions_for(NiftiGzX)
+    assert ".nii.gz" in exts
+    assert all(isinstance(e, str) for e in exts)
+
+
+def test_extensions_for_dicomseries_returns_empty():
+    """DicomSeries has no single-file extension; _extensions_for returns ()."""
+    from fileformats.medimage import DicomSeries
+    from pydra.compose.monai.task import _extensions_for
+
+    exts = _extensions_for(DicomSeries)
+    assert exts == ()
+
+
+def test_extensions_for_any_returns_empty():
+    """ty.Any is not a FileSet subclass; _extensions_for returns ()."""
+    import typing as ty
+    from pydra.compose.monai.task import _extensions_for
+
+    assert _extensions_for(ty.Any) == ()
+
+
+def test_default_ext_for_niftigzx():
+    """_default_ext_for returns '.nii.gz' for NiftiGzX."""
+    from fileformats.medimage import NiftiGzX
+    from pydra.compose.monai.task import _default_ext_for
+
+    assert _default_ext_for(NiftiGzX) == ".nii.gz"
+
+
+def test_default_ext_for_unknown_falls_back():
+    """_default_ext_for falls back to '.nii.gz' for types with no file extension."""
+    import typing as ty
+    from fileformats.medimage import DicomSeries
+    from pydra.compose.monai.task import _default_ext_for
+
+    # Both an unknown type and a dir-based type fall back to .nii.gz
+    assert _default_ext_for(ty.Any) == ".nii.gz"
+    assert _default_ext_for(DicomSeries) == ".nii.gz"
+
+
+# ---------------------------------------------------------------------------
+# _first_input_stem — fileformats-driven extension stripping
+# ---------------------------------------------------------------------------
+
+
+def test_first_input_stem_uses_fileformats_extensions(tmp_path):
+    """_first_input_stem strips the NiftiGzX extension from the input path.
+
+    The field type is NiftiGzX (MRI modality), so _extensions_for returns
+    ['.nii.gz'] and the compound extension is stripped correctly — not via
+    Path.stem (which would give 'T1w.nii') but via the type-driven lookup.
+
+    We verify this by confirming that Path.stem alone would give the *wrong*
+    answer ('T1w.nii') while the type-driven code gives the correct one ('T1w').
+    """
+    from pydra.compose.monai.task import _first_input_stem, _extensions_for
+    from pathlib import Path as _Path
+
+    # Confirm Path.stem alone is insufficient for compound extensions.
+    assert _Path("T1w.nii.gz").stem == "T1w.nii"
+
+    # Build a TaskCls whose image field is typed NiftiGzX (the default for MRI)
+    bundle_meta = tmp_path / "configs" / "metadata.json"
+    bundle_meta.parent.mkdir(parents=True)
+    bundle_meta.write_text(
+        json.dumps({
+            "name": "nifti_stem_test",
+            "network_data_format": {
+                "inputs": {"image": {"type": "image", "modality": "MRI"}},
+                "outputs": {},
+            },
+        })
+    )
+    TaskCls = monai.define(bundle_meta)
+
+    # Verify the field is NiftiGzX-typed and carries the right extension.
+    from fileformats.medimage import NiftiGzX
+    image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
+    assert image_field.type is NiftiGzX
+    assert ".nii.gz" in _extensions_for(NiftiGzX)
+
+    # NiftiGzX validates file existence, magic number, and requires a BIDS JSON
+    # sidecar (.json).  Create both files so pydra can coerce the path to NiftiGzX.
+    import gzip as _gzip, io as _io
+    buf = _io.BytesIO()
+    with _gzip.open(buf, "wb") as f:
+        f.write(b"")
+    input_file = tmp_path / "T1w.nii.gz"
+    input_file.write_bytes(buf.getvalue())
+    (tmp_path / "T1w.json").write_text("{}")  # empty BIDS sidecar
+
+    task = TaskCls(model_weights=str(tmp_path), image=str(input_file))
+
+    # _extensions_for drives the lookup, so the compound extension is stripped correctly.
+    assert _first_input_stem(task) == "T1w"
+
+
+def test_first_input_stem_fallback_for_unknown_extension(tmp_path):
+    """_first_input_stem falls back to Path.stem for fields typed ty.Any."""
+    from pydra.compose.monai.task import _first_input_stem
+
+    # Build a TaskCls with a generic (ty.Any) image field
+    bundle_meta = tmp_path / "configs" / "metadata.json"
+    bundle_meta.parent.mkdir(parents=True)
+    bundle_meta.write_text(
+        json.dumps({
+            "name": "generic_stem_test",
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+                "outputs": {},
+            },
+        })
+    )
+    TaskCls = monai.define(bundle_meta)
+    task = TaskCls(model_weights=str(tmp_path), image="path/to/T1w.unknown")
+
+    # Path.stem of "T1w.unknown" is "T1w"
+    assert _first_input_stem(task) == "T1w"
+
+
+# ---------------------------------------------------------------------------
+# _from_job — output extension resolved from field type
+# ---------------------------------------------------------------------------
+
+
+def test_from_job_uses_field_type_for_output_ext(make_synthetic_bundle, tmp_path):
+    """When inference.json omits output_ext, _from_job derives it from NiftiGzX.
+
+    The SaveImaged transform in DEFAULT_INFERENCE has no explicit output_ext,
+    so the default must come from the pred field's NiftiGzX type, not a
+    hardcoded string.  We verify the mechanism by checking _default_ext_for
+    returns the same extension that was used to locate the output file.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+    from pydra.compose.monai.task import _default_ext_for
+    from fileformats.medimage import NiftiGzX
+
+    # Default synthetic bundle: pred output is NiftiGzX (format=segmentation)
+    bundle = make_synthetic_bundle()
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    # Verify that _default_ext_for(NiftiGzX) == ".nii.gz"
+    assert _default_ext_for(NiftiGzX) == ".nii.gz"
+
+    # The SaveImaged postfix is "seg" and there's no output_ext in DEFAULT_INFERENCE
+    expected = output_dir / "T1w_seg.nii.gz"
+    expected.write_bytes(b"fake nifti")
+
+    TaskCls = monai.define(bundle)
+
+    # Confirm that the pred output field is NiftiGzX-typed
+    pred_field = next(f for f in get_fields(TaskCls.Outputs) if f.name == "pred")
+    assert pred_field.type is NiftiGzX
+
+    # NiftiGzX input field validates file existence, magic number, and requires a
+    # BIDS JSON sidecar.  Create both files so pydra can coerce the path to NiftiGzX.
+    import gzip as _gzip, io as _io
+    buf = _io.BytesIO()
+    with _gzip.open(buf, "wb") as f:
+        f.write(b"")
+    input_file = tmp_path / "T1w.nii.gz"
+    input_file.write_bytes(buf.getvalue())
+    (tmp_path / "T1w.json").write_text("{}")  # empty BIDS sidecar
+
+    task = TaskCls(model_weights=str(bundle), image=str(input_file))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    assert Path(str(outputs.pred)) == expected
