@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 from pydra.compose import monai
 from pydra.compose.monai.task import MonaiTask
+from pydra.utils import get_fields
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +154,6 @@ def test_from_job_does_not_overwrite_base_output_fields(tmp_path, monkeypatch):
     outputs = OutputsCls._from_job(job)
 
     import attrs as _attrs
-
     stdout_field_names = {f.name for f in _attrs.fields(OutputsCls)} & {"stdout", "stderr", "return_code"}
     for name in stdout_field_names:
         val = getattr(outputs, name, None)

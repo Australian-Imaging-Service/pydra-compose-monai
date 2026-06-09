@@ -7,6 +7,7 @@ import numpy as np
 import nibabel as nib
 from pathlib import Path
 from pydra.compose import monai
+from pydra.utils import get_fields
 
 
 @pytest.fixture
@@ -95,9 +96,9 @@ def test_real_bundle_define_smoke(tmp_path):
     assert TaskCls.__name__
     assert TaskCls.__name__.isidentifier()
 
-    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    field_names = {f.name for f in get_fields(TaskCls)}
     assert "model_weights" in field_names
     assert "image" in field_names, f"expected 'image' in input fields; got {field_names}"
 
-    output_names = {f.name for f in TaskCls.Outputs.__attrs_attrs__}
+    output_names = {f.name for f in get_fields(TaskCls.Outputs)}
     assert "pred" in output_names, f"expected 'pred' in output fields; got {output_names}"

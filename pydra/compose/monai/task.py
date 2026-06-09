@@ -3,6 +3,7 @@ import typing as ty
 import logging
 from pathlib import Path
 from pydra.compose import base
+from pydra.utils import get_fields
 from . import fields
 
 
@@ -45,8 +46,8 @@ class MonaiOutputs(base.Outputs):
 
         input_stem = _first_input_stem(job.task)
 
-        for field in attrs.fields(cls):
-            if field.name.startswith("_") or field.name in cls.BASE_OUTPUT_ATTRS:
+        for field in get_fields(cls):
+            if field.name in cls.BASE_OUTPUT_ATTRS:
                 continue
             spec = save_specs.get(field.name)
             if spec is None:
@@ -142,9 +143,7 @@ def _first_input_stem(task) -> "str | None":
     the declared BASE_ATTRS so only user-facing image / data fields are
     considered.
     """
-    for field in attrs.fields(type(task)):
-        if field.name.startswith("_"):
-            continue
+    for field in get_fields(task):
         if field.name in MonaiTask.BASE_ATTRS:
             continue
         val = getattr(task, field.name, None)
@@ -197,7 +196,7 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         # Build the dataset entries from job inputs, keyed by field name.
         # Each entry in network_data_format.inputs becomes a key in the data dict.
         data_entry: dict[str, str] = {}
-        for field in attrs.fields(type(job.task)):
+        for field in get_fields(job.task):
             if field.name in MonaiTask.BASE_ATTRS:
                 continue
             val = getattr(job.task, field.name, None)

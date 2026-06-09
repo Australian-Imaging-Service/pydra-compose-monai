@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 from fileformats.medimage import NiftiGzX
 from pydra.compose import monai
+from pydra.utils import get_fields
 
 
 MINIMAL_METADATA = {
@@ -40,31 +41,29 @@ def metadata_json(tmp_path: Path) -> Path:
 def test_define_from_metadata_json_creates_task_class(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     assert TaskCls is not None
-    field_names = [f.name for f in TaskCls.__attrs_attrs__]
+    field_names = [f.name for f in get_fields(TaskCls)]
     assert "image" in field_names
     assert "model_weights" in field_names
 
 
 def test_define_from_metadata_json_outputs_have_pred(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
-    output_field_names = [f.name for f in TaskCls.Outputs.__attrs_attrs__]
+    output_field_names = [f.name for f in get_fields(TaskCls.Outputs)]
     assert "pred" in output_field_names
 
 
 def test_define_preserves_path_on_arg(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
-    image_field = next(f for f in TaskCls.__attrs_attrs__ if f.name == "image")
-    pydra_meta = image_field.metadata["__PYDRA_METADATA__"]
-    assert pydra_meta.path == "network_data_format/inputs/image"
+    image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
+    assert image_field.path == "network_data_format/inputs/image"
 
 
 def test_define_preserves_path_on_out(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     pred_field = next(
-        f for f in TaskCls.Outputs.__attrs_attrs__ if f.name == "pred"
+        f for f in get_fields(TaskCls.Outputs) if f.name == "pred"
     )
-    pydra_meta = pred_field.metadata["__PYDRA_METADATA__"]
-    assert pydra_meta.path == "network_data_format/outputs/pred"
+    assert pred_field.path == "network_data_format/outputs/pred"
 
 
 def test_define_class_name_from_metadata(metadata_json: Path):
@@ -97,13 +96,13 @@ def test_define_accepts_str_path(metadata_json: Path):
 
 def test_define_from_bundle_dir(bundle_dir: Path):
     TaskCls = monai.define(bundle_dir)
-    field_names = [f.name for f in TaskCls.__attrs_attrs__]
+    field_names = [f.name for f in get_fields(TaskCls)]
     assert "image" in field_names
 
 
 def test_define_includes_base_attrs(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
-    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    field_names = {f.name for f in get_fields(TaskCls)}
     assert "model_weights" in field_names
 
 
@@ -114,12 +113,12 @@ def test_define_rejects_non_path_non_class():
 
 def test_define_image_input_has_nifti_type(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
-    image_field = next(f for f in TaskCls.__attrs_attrs__ if f.name == "image")
+    image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
     assert image_field.type is NiftiGzX
 
 
 def test_define_does_not_include_arch_field(metadata_json: Path):
     """R5: `arch` is YAGNI and was removed."""
     TaskCls = monai.define(metadata_json)
-    field_names = {f.name for f in TaskCls.__attrs_attrs__}
+    field_names = {f.name for f in get_fields(TaskCls)}
     assert "arch" not in field_names
