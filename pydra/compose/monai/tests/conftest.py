@@ -220,12 +220,15 @@ def mock_config_parser_with_task(monkeypatch, make_synthetic_bundle):
 
 
 class FakeJob:
-    """Minimal stand-in for pydra's Job, sufficient for _run / _from_job."""
+    """Minimal stand-in for pydra's Job, sufficient for _run / _from_job.
 
-    def __init__(self, task, output_dir: Path, cache_dir: Path | None = None):
+    Matches the real `pydra.engine.Job` API by exposing `.cache_dir` as the
+    output directory (pydra writes outputs into the job's cache_dir).
+    """
+
+    def __init__(self, task, cache_dir: Path):
         self.task = task
-        self.output_dir = str(output_dir)
-        self.cache_dir = cache_dir
+        self.cache_dir = str(cache_dir)
 
 
 @pytest.fixture
