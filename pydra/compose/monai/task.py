@@ -229,22 +229,31 @@ def _stem_of(name: str) -> str:
     return Path(name).stem
 
 
+BUNDLE_HELP = (
+    "Path or name of the MONAI bundle to run (a bundle directory, a "
+    "weights file inside one, or a Model Zoo bundle name such as "
+    "'spleen_ct_segmentation'). When the task class is created via "
+    "define(bundle_path), this field defaults to that path; supply "
+    "an explicit value to override."
+)
+
+
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)
 class MonaiTask(base.Task[MonaiOutputsType]):
 
-    BASE_ATTRS = ("model_weights",)
+    BASE_ATTRS = ("bundle",)
 
-    model_weights: str = fields.arg(
-        name="model_weights",
+    bundle: str = fields.arg(
+        name="bundle",
         type=ty.Any,
-        help="the weights of the model",
+        help=BUNDLE_HELP,
     )
 
     def _run(self, job: "Job[MonaiTask]", rerun: bool = True) -> None:
         """Run inference using a MONAI bundle.
 
         Loads configs/inference.json from the bundle directory indicated by
-        ``model_weights``, overrides the dataset input paths and output
+        ``bundle``, overrides the dataset input paths and output
         directory with values from the job, then runs the bundle evaluator.
 
         Parameters
@@ -291,18 +300,18 @@ class MonaiTask(base.Task[MonaiOutputsType]):
     def _resolve_bundle_dir(self, job: "Job[MonaiTask]") -> Path:
         """Return the bundle root directory.
 
-        ``model_weights`` may be:
+        ``bundle`` may be:
         - a directory (the bundle root itself)
         - a path to a ``.pt`` / ``.ts`` weights file inside the bundle
         - a MONAI Model Zoo bundle name (e.g. ``"spleen_ct_segmentation"``)
           with no path separators or file extension — in that case the
           bundle is downloaded via ``monai.bundle.load(source="monaihosting")``
         """
-        weights = getattr(job.task, "model_weights", None)
-        if weights is None:
-            raise ValueError("model_weights must be set before running a MonaiTask")
+        bundle = getattr(job.task, "bundle", None)
+        if bundle is None:
+            raise ValueError("bundle must be set before running a MonaiTask")
 
-        path = Path(str(weights))
+        path = Path(str(bundle))
 
         if path.is_dir():
             if not (path / "configs" / "metadata.json").is_file():
@@ -325,14 +334,14 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         # If it's not a path on disk, the only remaining valid form is a
         # MONAI Model Zoo bundle name (e.g. "spleen_ct_segmentation").
         # Bundle names contain no path separators and no file extension.
-        weights_str = str(weights)
+        bundle_str = str(bundle)
         if (
-            "/" in weights_str
-            or "\\" in weights_str
-            or Path(weights_str).suffix != ""
+            "/" in bundle_str
+            or "\\" in bundle_str
+            or Path(bundle_str).suffix != ""
         ):
             raise ValueError(
-                f"model_weights={weights_str!r} is not a valid MONAI bundle "
+                f"bundle={bundle_str!r} is not a valid MONAI bundle "
                 "reference. Provide one of: an existing bundle directory, an "
                 "existing weights file inside a bundle, or a Model Zoo bundle "
                 "name (e.g. 'spleen_ct_segmentation')."
@@ -340,6 +349,6 @@ class MonaiTask(base.Task[MonaiOutputsType]):
 
         from .spec_parser import _import_monai_bundle
         bundle_load = _import_monai_bundle().load
-        logger.info("Downloading MONAI bundle %s", weights_str)
-        bundle_dir = bundle_load(weights_str, source="monaihosting")
+        logger.info("Downloading MONAI bundle %s", bundle_str)
+        bundle_dir = bundle_load(bundle_str, source="monaihosting")
         return Path(bundle_dir)

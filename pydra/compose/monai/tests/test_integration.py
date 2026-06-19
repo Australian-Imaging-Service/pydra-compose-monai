@@ -44,7 +44,7 @@ def test_synthetic_bundle_end_to_end(synthetic_bundle_dir, t1w_patch, tmp_path):
     output_dir.mkdir()
 
     TaskCls = monai.define(synthetic_bundle_dir)
-    task = TaskCls(model_weights=str(synthetic_bundle_dir), image=str(t1w_patch))
+    task = TaskCls(bundle=str(synthetic_bundle_dir), image=str(t1w_patch))
     job = FakeJob(task, output_dir)
 
     task._run(job)
@@ -64,7 +64,7 @@ def test_synthetic_bundle_via_pydra_submitter(synthetic_bundle_dir, t1w_patch, t
     from pydra.engine.submitter import Submitter
 
     TaskCls = monai.define(synthetic_bundle_dir)
-    task = TaskCls(model_weights=str(synthetic_bundle_dir), image=str(t1w_patch))
+    task = TaskCls(bundle=str(synthetic_bundle_dir), image=str(t1w_patch))
 
     with Submitter(worker="cf", cache_root=str(tmp_path / "cache")) as sub:
         result = sub(task)
@@ -97,7 +97,7 @@ def test_real_bundle_define_smoke(tmp_path):
     assert TaskCls.__name__.isidentifier()
 
     field_names = {f.name for f in get_fields(TaskCls)}
-    assert "model_weights" in field_names
+    assert "bundle" in field_names
     assert "image" in field_names, f"expected 'image' in input fields; got {field_names}"
 
     output_names = {f.name for f in get_fields(TaskCls.Outputs)}

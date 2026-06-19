@@ -22,7 +22,7 @@ def test_resolve_bundle_dir_accepts_dir_with_configs(
         json.dumps({"name": "synthetic_bundle_dir", "network_data_format": {"inputs": {}, "outputs": {}}})
     )
     TaskCls = monai.define(no_inputs_meta)
-    task = TaskCls(model_weights=str(synthetic_bundle_dir))
+    task = TaskCls(bundle=str(synthetic_bundle_dir))
     # _resolve_bundle_dir takes a job-like object with a .task attribute
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -37,12 +37,12 @@ def test_resolve_bundle_dir_rejects_dir_without_configs(tmp_path: Path):
     from pydra.compose.monai.tests.conftest import FakeJob
 
     # Use the synthetic bundle's TaskCls so we can construct a task instance
-    # even though model_weights points at the bare dir.
+    # even though bundle points at the bare dir.
     bundle_meta = tmp_path / "tmpconfig" / "metadata.json"
     bundle_meta.parent.mkdir(parents=True)
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
-    task = TaskCls(model_weights=str(bare))
+    task = TaskCls(bundle=str(bare))
     job = FakeJob(task, tmp_path / "out")
 
     with pytest.raises(ValueError, match="configs/metadata.json"):
@@ -67,7 +67,7 @@ def test_resolve_bundle_dir_treats_simple_name_as_repo_id(monkeypatch, tmp_path:
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
 
-    task = TaskCls(model_weights="spleen_ct_segmentation")
+    task = TaskCls(bundle="spleen_ct_segmentation")
     from pydra.compose.monai.tests.conftest import FakeJob
 
     job = FakeJob(task, tmp_path / "out")
@@ -83,7 +83,7 @@ def test_resolve_bundle_dir_rejects_path_like_string(tmp_path: Path):
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
 
-    task = TaskCls(model_weights="/tmp/nonexistent/bundle.pt")
+    task = TaskCls(bundle="/tmp/nonexistent/bundle.pt")
     from pydra.compose.monai.tests.conftest import FakeJob
 
     job = FakeJob(task, tmp_path / "out")
@@ -99,7 +99,7 @@ def test_resolve_bundle_dir_rejects_string_with_extension(tmp_path: Path):
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
 
-    task = TaskCls(model_weights="my_model.pt")
+    task = TaskCls(bundle="my_model.pt")
     from pydra.compose.monai.tests.conftest import FakeJob
 
     job = FakeJob(task, tmp_path / "out")
@@ -141,7 +141,7 @@ def test_from_job_does_not_overwrite_base_output_fields(tmp_path, monkeypatch):
         })
     )
     TaskCls = monai.define(bundle_meta)
-    task = TaskCls(model_weights=str(tmp_path))
+    task = TaskCls(bundle=str(tmp_path))
     job = FakeJob(task, output_dir)
 
     OutputsCls = TaskCls.Outputs
@@ -198,7 +198,7 @@ def test_from_job_resolves_output_from_save_transform(
     expected.write_bytes(b"fake nifti")
 
     TaskCls = monai.define(bundle)
-    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    task = TaskCls(bundle=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
     job = FakeJob(task, output_dir)
 
     outputs = TaskCls.Outputs._from_job(job)
@@ -228,7 +228,7 @@ def test_from_job_does_not_match_unrelated_files(
     (output_dir / "unrelated_pred_data.csv").write_text("noise")
 
     TaskCls = monai.define(bundle)
-    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    task = TaskCls(bundle=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
     job = FakeJob(task, output_dir)
 
     outputs = TaskCls.Outputs._from_job(job)
@@ -263,7 +263,7 @@ def test_from_job_leaves_field_unset_when_save_transform_missing(
     (output_dir / "pred.nii.gz").write_bytes(b"stray match")
 
     TaskCls = monai.define(bundle)
-    task = TaskCls(model_weights=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
+    task = TaskCls(bundle=str(bundle), image=str(tmp_path / "T1w.nii.gz"))
     job = FakeJob(task, output_dir)
 
     outputs = TaskCls.Outputs._from_job(job)
@@ -285,7 +285,7 @@ def test_run_loads_metadata_and_inference_configs(
     bundle, TaskCls, parser, evaluator = mock_config_parser_with_task
     output_dir = tmp_path / "out"
 
-    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -307,7 +307,7 @@ def test_run_sets_dataset_data_from_inputs(
     output_dir = tmp_path / "out"
 
     task = TaskCls(
-        model_weights=str(bundle),
+        bundle=str(bundle),
         image="/data/T1w.nii.gz",
     )
 
@@ -330,7 +330,7 @@ def test_run_sets_output_dir(
     bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
     output_dir = tmp_path / "out"
 
-    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -347,7 +347,7 @@ def test_run_calls_evaluator_run_once(
     bundle, TaskCls, _parser, evaluator = mock_config_parser_with_task
     output_dir = tmp_path / "out"
 
-    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -360,11 +360,11 @@ def test_run_calls_evaluator_run_once(
 def test_run_excludes_base_attrs_from_dataset_data(
     mock_config_parser_with_task, tmp_path
 ):
-    """model_weights must not appear as a key in dataset#data."""
+    """bundle must not appear as a key in dataset#data."""
     bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
     output_dir = tmp_path / "out"
 
-    task = TaskCls(model_weights=str(bundle), image="dummy.nii.gz")
+    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -372,7 +372,7 @@ def test_run_excludes_base_attrs_from_dataset_data(
     task._run(job)
 
     data = parser.set_calls["dataset#data"]
-    assert "model_weights" not in data[0]
+    assert "bundle" not in data[0]
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +408,7 @@ def test_resolve_bundle_dir_walks_up_from_weights_file(
     bundle_root = weights.parent.parent  # models/model.pt -> bundle root
 
     TaskCls = monai.define(bundle)
-    task = TaskCls(model_weights=str(weights), image="dummy.nii.gz")
+    task = TaskCls(bundle=str(weights), image="dummy.nii.gz")
 
     job = FakeJob(task, tmp_path / "out")
     assert task._resolve_bundle_dir(job) == bundle_root
@@ -423,7 +423,7 @@ def test_resolve_bundle_dir_raises_for_orphan_weights_file(tmp_path):
     bundle_meta.parent.mkdir(parents=True)
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
-    task = TaskCls(model_weights=str(orphan))
+    task = TaskCls(bundle=str(orphan))
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
@@ -432,18 +432,18 @@ def test_resolve_bundle_dir_raises_for_orphan_weights_file(tmp_path):
         task._resolve_bundle_dir(job)
 
 
-def test_resolve_bundle_dir_raises_when_model_weights_missing(tmp_path):
-    """model_weights=None must raise with an actionable message."""
+def test_resolve_bundle_dir_raises_when_bundle_missing(tmp_path):
+    """bundle=None must raise with an actionable message."""
     bundle_meta = tmp_path / "tmpconfig" / "metadata.json"
     bundle_meta.parent.mkdir(parents=True)
     bundle_meta.write_text('{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}')
     TaskCls = monai.define(bundle_meta)
-    task = TaskCls(model_weights=None)
+    task = TaskCls(bundle=None)
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
     job = FakeJob(task, tmp_path / "out")
-    with pytest.raises(ValueError, match="model_weights must be set"):
+    with pytest.raises(ValueError, match="bundle must be set"):
         task._resolve_bundle_dir(job)
 
 
@@ -568,7 +568,7 @@ def test_first_input_stem_uses_fileformats_extensions(tmp_path):
     input_file.write_bytes(buf.getvalue())
     (tmp_path / "T1w.json").write_text("{}")  # empty BIDS sidecar
 
-    task = TaskCls(model_weights=str(tmp_path), image=str(input_file))
+    task = TaskCls(bundle=str(tmp_path), image=str(input_file))
 
     # _extensions_for drives the lookup, so the compound extension is stripped correctly.
     assert _first_input_stem(task) == "T1w"
@@ -591,7 +591,7 @@ def test_first_input_stem_fallback_for_unknown_extension(tmp_path):
         })
     )
     TaskCls = monai.define(bundle_meta)
-    task = TaskCls(model_weights=str(tmp_path), image="path/to/T1w.unknown")
+    task = TaskCls(bundle=str(tmp_path), image="path/to/T1w.unknown")
 
     # Path.stem of "T1w.unknown" is "T1w"
     assert _first_input_stem(task) == "T1w"
@@ -642,7 +642,7 @@ def test_from_job_uses_field_type_for_output_ext(make_synthetic_bundle, tmp_path
     input_file.write_bytes(buf.getvalue())
     (tmp_path / "T1w.json").write_text("{}")  # empty BIDS sidecar
 
-    task = TaskCls(model_weights=str(bundle), image=str(input_file))
+    task = TaskCls(bundle=str(bundle), image=str(input_file))
     job = FakeJob(task, output_dir)
 
     outputs = TaskCls.Outputs._from_job(job)

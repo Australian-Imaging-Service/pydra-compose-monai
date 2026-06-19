@@ -43,7 +43,7 @@ def test_define_from_metadata_json_creates_task_class(metadata_json: Path):
     assert TaskCls is not None
     field_names = [f.name for f in get_fields(TaskCls)]
     assert "image" in field_names
-    assert "model_weights" in field_names
+    assert "bundle" in field_names
 
 
 def test_define_from_metadata_json_outputs_have_pred(metadata_json: Path):
@@ -103,7 +103,7 @@ def test_define_from_bundle_dir(bundle_dir: Path):
 def test_define_includes_base_attrs(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     field_names = {f.name for f in get_fields(TaskCls)}
-    assert "model_weights" in field_names
+    assert "bundle" in field_names
 
 
 def test_define_rejects_non_path_non_class():
@@ -122,3 +122,39 @@ def test_define_does_not_include_arch_field(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     field_names = {f.name for f in get_fields(TaskCls)}
     assert "arch" not in field_names
+
+
+def test_define_sets_bundle_default_to_spec_path(metadata_json: Path):
+    """Option A from PR review: define() with a path sets that path as the
+    default on the `bundle` field."""
+    TaskCls = monai.define(metadata_json)
+    bundle_field = next(f for f in get_fields(TaskCls) if f.name == "bundle")
+    # spec_path is the metadata.json; bundle root is its parent.parent
+    expected_default = str(metadata_json.parent.parent)
+    assert bundle_field.default == expected_default
+
+
+def test_define_sets_bundle_default_to_bundle_dir(bundle_dir: Path):
+    """When define() is given a bundle dir directly, the default IS that dir."""
+    TaskCls = monai.define(bundle_dir)
+    bundle_field = next(f for f in get_fields(TaskCls) if f.name == "bundle")
+    assert bundle_field.default == str(bundle_dir)
+
+
+def test_task_constructible_without_explicit_bundle(bundle_dir: Path):
+    """A defaulted bundle field makes the task usable with no kwargs."""
+    TaskCls = monai.define(bundle_dir)
+    task = TaskCls()  # no bundle= passed
+    assert getattr(task, "bundle") == str(bundle_dir)
+
+
+def test_task_bundle_kwarg_overrides_default(bundle_dir: Path, tmp_path: Path):
+    """Explicit `bundle=` overrides the define-time default."""
+    other_bundle = tmp_path / "other"
+    (other_bundle / "configs").mkdir(parents=True)
+    (other_bundle / "configs" / "metadata.json").write_text(
+        '{"name": "x", "network_data_format": {"inputs": {}, "outputs": {}}}'
+    )
+    TaskCls = monai.define(bundle_dir)
+    task = TaskCls(bundle=str(other_bundle))
+    assert task.bundle == str(other_bundle)
