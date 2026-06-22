@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pydra-compose-monai"
-description = "Pydra compose package for wrapping BIDS Apps in Pydra tasks"
+description = "Pydra compose package for wrapping MONAI models in Pydra tasks"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
