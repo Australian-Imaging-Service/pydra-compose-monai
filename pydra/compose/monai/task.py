@@ -176,6 +176,8 @@ BUNDLE_HELP = (
 @attrs.define(kw_only=True, auto_attribs=False, eq=False, repr=False)
 class MonaiTask(base.Task[MonaiOutputsType]):
 
+    _executor_name = "bundle"
+
     BASE_ATTRS = ("bundle",)
 
     bundle: str = fields.arg(
