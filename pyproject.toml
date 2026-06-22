@@ -49,6 +49,8 @@ test = [
     "pytest-xdist",
     "pytest-rerunfailures",
     "codecov",
+    "pytorch-ignite",   # required by MONAI's SupervisedEvaluator (integration tests)
+    "huggingface_hub",  # required by monai.bundle.download on MONAI >= 1.5.2 (network test)
 ]
 
 [tool.hatch.version]
@@ -65,6 +67,11 @@ include-only = ["pydra/compose/monai"]
 # Keep the repo root (not pydra/compose/) on sys.path so that `import monai`
 # resolves to the PyPI package, not to this pydra/compose/monai subpackage.
 pythonpath = ["."]
+markers = [
+    "integration: end-to-end tests that build a synthetic bundle and run real CPU inference (~5s)",
+    "network: tests that require outbound network access to MONAI hosting",
+]
+addopts = "-m 'not integration and not network' --cov=pydra/compose/monai --cov-report=term-missing"
 
 [tool.black]
 target-version = ["py38"]

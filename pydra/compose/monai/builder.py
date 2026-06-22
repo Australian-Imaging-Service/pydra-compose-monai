@@ -5,7 +5,6 @@ from pathlib import Path
 import inspect
 
 from typing import dataclass_transform
-from fileformats.application import Yaml
 from pydra.compose.base import (
     ensure_field_objects,
     build_task_class,
@@ -15,6 +14,7 @@ from pydra.compose.base import (
 from .fields import arg, out
 from .task import MonaiTask as Task
 from .task import MonaiOutputs as Outputs
+from .task import BUNDLE_HELP
 from .spec_parser import parse_monai_spec, name_from_spec
 
 
@@ -26,7 +26,7 @@ logger = logging.getLogger("pydra.compose.monai")
     field_specifiers=(arg,),
 )
 def define(
-    wrapped: type | Yaml | None = None,
+    wrapped: type | str | Path | None = None,
     /,
     inputs: list[str | arg] | dict[str, arg | type] | None = None,
     outputs: list[str | out] | dict[str, out | type] | type | None = None,
@@ -88,9 +88,17 @@ def define(
             klass = None
             parsed_inputs, parsed_outputs = parse_monai_spec(spec_path)
 
-            # Add in base task fields (model_weights, arch)
-            parsed_inputs.update(
-                {n: getattr(Task, n) for n in Task.BASE_ATTRS}
+            # Bundle root: metadata.json lives at <bundle_root>/configs/metadata.json,
+            # so when spec_path is the file we go up two levels; when it's the dir we use it directly.
+            bundle_root = spec_path if spec_path.is_dir() else spec_path.parent.parent
+
+            # Add the `bundle` base field with a default pointing at the bundle root
+            # used at define() time. Users override only if they want a different bundle.
+            parsed_inputs["bundle"] = arg(
+                name="bundle",
+                type=ty.Any,
+                help=BUNDLE_HELP,
+                default=str(bundle_root),
             )
 
             parsed_inputs, parsed_outputs = ensure_field_objects(

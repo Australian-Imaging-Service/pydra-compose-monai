@@ -2,3 +2,7 @@
 branch = True
 omit =
     */_version.py
+
+[report]
+fail_under = 70
+show_missing = True
