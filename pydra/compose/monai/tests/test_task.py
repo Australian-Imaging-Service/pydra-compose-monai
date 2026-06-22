@@ -516,7 +516,7 @@ def test_first_input_stem_uses_fileformats_extensions(tmp_path):
     assert _first_input_stem(task) == "T1w"
 
 
-@pytest.mark.xfail("not converted to fileformats native style yet")
+@pytest.mark.xfail(reason="not converted to fileformats native style yet")
 def test_first_input_stem_fallback_for_unknown_extension(tmp_path):
     """_first_input_stem falls back to Path.stem for fields typed ty.Any."""
     from pydra.compose.monai.task import _first_input_stem
