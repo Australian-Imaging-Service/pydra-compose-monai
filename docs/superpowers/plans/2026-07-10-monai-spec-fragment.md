@@ -1,10 +1,12 @@
-# pydra-compose-monai: spec_fragment + BundleTask Implementation Plan
+# pydra-compose-monai: spec_fragment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a public `spec_fragment()` function that serializes a parsed MONAI bundle into a pipeline2app `sources`/`sinks`/`parameters` YAML fragment, plus a generic parametric `BundleTask` that a spec's `command.task` can point at.
+**Goal:** Add a public `spec_fragment()` function that serializes a parsed MONAI bundle into a pipeline2app `sources`/`sinks`/`parameters` YAML fragment.
 
-**Architecture:** Reuse the existing `parse_monai_spec()` (which already computes typed `arg`/`out` fields from a bundle's `metadata.json`) and serialize its output to plain dicts using fileformats `.mime_like` strings. Add `BundleTask` as a thin, importable alias so a single class serves all models, with the specific bundle selected via the command `configuration`.
+**Architecture:** Reuse the existing `parse_monai_spec()` (which already computes typed `arg`/`out` fields from a bundle's `metadata.json`) and serialize its output to plain dicts using fileformats `.mime_like` strings.
+
+> **Revision (2026-07-24):** The originally-planned generic `BundleTask` (Task 2) was **dropped**. The raw `MonaiTask` base class has no usable fields and cannot be instantiated with `bundle=` — only a `define()`-built subclass can. Rather than ship a generic task built from a committed fixture (which would need maintaining against schema drift), the consuming repo (Plan B) generates a per-model `define()`-built class instead (Option A). This package therefore ships **only** `spec_fragment()`. The former Task 2 is removed; the former Task 3 regression check remains below.
 
 **Tech Stack:** Python ≥3.11, attrs, pydra.compose.base, fileformats.medimage, pytest.
 
@@ -192,113 +194,23 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: `BundleTask` generic parametric task alias
-
-**Files:**
-- Modify: `pydra/compose/monai/task.py` (add `BundleTask` alias after `MonaiTask`, end of file ~line 292)
-- Modify: `pydra/compose/monai/__init__.py` (export `BundleTask`)
-- Test: `pydra/compose/monai/tests/test_task.py` (append test)
-
-**Interfaces:**
-- Consumes: `MonaiTask` (existing, `task.py:177`) whose `bundle` input + `_resolve_bundle_dir` already accept a bundle directory.
-- Produces: `BundleTask` — importable name (`pydra.compose.monai:BundleTask`) that is a `pydra.compose.base.Task` subclass, usable as a pipeline2app `command.task` with the bundle supplied via command `configuration={"bundle": "/opt/bundles/<model>"}`.
-
-Rationale: pipeline2app resolves `command.task` to an importable `pydra.compose.base.Task` subclass. `MonaiTask` is dynamically subclassed per-bundle by `define()`, but the base `MonaiTask` is itself a concrete, importable Task whose single `bundle` input is set via `configuration`. `BundleTask` is a clearly-named public alias for that use.
-
-- [ ] **Step 1: Write the failing test**
-
-Append to `pydra/compose/monai/tests/test_task.py`:
-
-```python
-# ---------------------------------------------------------------------------
-# BundleTask (generic parametric task for pipeline2app command.task)
-# ---------------------------------------------------------------------------
-
-
-def test_bundletask_is_importable_task_subclass():
-    from pydra.compose.base import Task as BaseTask
-    from pydra.compose.monai import BundleTask
-
-    assert isinstance(BundleTask, type)
-    assert issubclass(BundleTask, BaseTask)
-
-
-def test_bundletask_accepts_bundle_via_constructor(synthetic_bundle_dir):
-    from pydra.compose.monai import BundleTask
-
-    task = BundleTask(bundle=str(synthetic_bundle_dir))
-    assert task.bundle == str(synthetic_bundle_dir)
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `.venv/bin/pytest pydra/compose/monai/tests/test_task.py -k bundletask -v`
-Expected: FAIL with `ImportError: cannot import name 'BundleTask'`
-
-- [ ] **Step 3: Write minimal implementation**
-
-At the end of `pydra/compose/monai/task.py`, add:
-
-```python
-# ---------------------------------------------------------------------------
-# Generic parametric task for use as a pipeline2app command.task
-# ---------------------------------------------------------------------------
-
-# MonaiTask is a concrete, importable pydra.compose.base.Task subclass whose
-# single ``bundle`` input selects which MONAI bundle to run. A pipeline2app
-# spec points ``command.task`` at this class (``pydra.compose.monai:BundleTask``)
-# and fixes the bundle via the command ``configuration``, e.g.
-# ``configuration: {bundle: /opt/bundles/spleen_ct_segmentation}``.
-BundleTask = MonaiTask
-```
-
-- [ ] **Step 4: Export `BundleTask` from the package**
-
-In `pydra/compose/monai/__init__.py`, update the task import and `__all__`:
-
-```python
-from .task import MonaiTask as Task, MonaiOutputs as Outputs, BundleTask
-```
-
-and add `"BundleTask"` to `__all__`:
-
-```python
-__all__ = ["arg", "out", "define", "spec_fragment", "Task", "Outputs", "BundleTask", "__version__"]
-```
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `.venv/bin/pytest pydra/compose/monai/tests/test_task.py -k bundletask -v`
-Expected: PASS (2 passed)
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add pydra/compose/monai/task.py pydra/compose/monai/__init__.py pydra/compose/monai/tests/test_task.py
-git commit -m "feat: expose BundleTask as generic parametric task for pipeline2app command.task
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
-```
-
----
-
-### Task 3: Full test-suite regression check
+### Task 2: Full test-suite regression check
 
 **Files:** none (verification only)
 
 - [ ] **Step 1: Run the full (non-integration/network) suite**
 
 Run: `.venv/bin/pytest`
-Expected: all previously-passing tests still pass; the new `spec_fragment` and `bundletask` tests pass; skipped/xfail counts unchanged from before this work.
+Expected: all previously-passing tests still pass; the new `spec_fragment` tests pass; skipped/xfail counts unchanged from before this work.
 
 - [ ] **Step 2: Confirm public API surface**
 
 Run: `.venv/bin/python -c "import pydra.compose.monai as m; print(sorted(m.__all__))"`
-Expected: list includes `BundleTask`, `spec_fragment`, alongside the pre-existing names.
+Expected: list includes `spec_fragment`, alongside the pre-existing names (`Outputs`, `Task`, `arg`, `define`, `out`). Does NOT include `BundleTask`.
 
 ## Self-Review
 
-- **Spec coverage:** Component 1 of the design ("addition to pydra-compose-monai": `spec_fragment` + generic `BundleTask`) — Task 1 covers `spec_fragment`, Task 2 covers `BundleTask`, Task 3 guards regressions. Complete.
+- **Spec coverage:** Component 1 of the design, revised — pydra-compose-monai ships `spec_fragment()` only. Task 1 covers `spec_fragment`, Task 2 guards regressions. The generic `BundleTask` was dropped (see the Revision note at the top); the consuming repo generates a per-model `define()`-built class (Option A) instead. Complete.
 - **Placeholder scan:** No TBD/TODO; every code step shows full code and exact commands.
-- **Type consistency:** `spec_fragment` return shape (`sources`/`sinks`/`parameters`) is used identically in tests and impl; `_datatype_str` fallback string `"field/generic"` matches the test assertion; `BundleTask` name consistent across task.py, `__init__.py`, and tests.
+- **Type consistency:** `spec_fragment` return shape (`sources`/`sinks`/`parameters`) is used identically in tests and impl; `_datatype_str` fallback string `"field/generic"` matches the test assertion.
 - **Note for Plan B:** `spec_fragment` returns `sinks[name]["path"]` as the *bundle* metadata path (`network_data_format/outputs/pred`), NOT the frametree store path (e.g. `monai/pred`). Plan B's overlay/merge step is responsible for rewriting sink `path` values to store paths.
