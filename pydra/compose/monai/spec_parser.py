@@ -190,3 +190,52 @@ def _to_class_name(s: str) -> str:
     """Convert an arbitrary string to a valid CamelCase Python identifier."""
     words = re.split(r"[^a-zA-Z0-9]+", s)
     return "".join(w.capitalize() for w in words if w)
+
+
+def spec_fragment(spec_path: Path | str) -> dict[str, dict[str, dict]]:
+    """Serialize a MONAI bundle into a pipeline2app command fragment.
+
+    Parses the bundle via :func:`parse_monai_spec` and emits a dict with
+    ``sources`` (inputs), ``sinks`` (outputs) and ``parameters`` sections
+    suitable for embedding in a pipeline2app / frametree image spec.
+
+    Parameters
+    ----------
+    spec_path : Path | str
+        Path to a MONAI bundle ``metadata.json`` or bundle root directory.
+
+    Returns
+    -------
+    dict[str, dict[str, dict]]
+        ``{"sources": {name: {"datatype", "help", "path"}},
+           "sinks":   {name: {"datatype", "help", "path"}},
+           "parameters": {}}``
+    """
+    parsed_inputs, parsed_outputs = parse_monai_spec(spec_path)
+
+    sources = {
+        name: {
+            "datatype": _datatype_str(field.type),
+            "help": field.help,
+            "path": field.path,
+        }
+        for name, field in parsed_inputs.items()
+    }
+    sinks = {
+        name: {
+            "datatype": _datatype_str(field.type),
+            "help": field.help,
+            "path": field.path,
+        }
+        for name, field in parsed_outputs.items()
+    }
+    return {"sources": sources, "sinks": sinks, "parameters": {}}
+
+
+def _datatype_str(field_type: type) -> str:
+    """Return the fileformats MIME-like string for a field type.
+
+    Falls back to ``"field/generic"`` when the type is ``ty.Any`` (or any
+    type without a ``mime_like`` attribute).
+    """
+    return getattr(field_type, "mime_like", "field/generic")

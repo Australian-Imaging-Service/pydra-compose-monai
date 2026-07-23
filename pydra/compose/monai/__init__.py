@@ -15,6 +15,7 @@ except ImportError:
 
 from .builder import define
 from .fields import arg, out
+from .spec_parser import spec_fragment
 from .task import MonaiTask as Task, MonaiOutputs as Outputs
 
-__all__ = ["arg", "out", "define", "Task", "Outputs", "__version__"]
+__all__ = ["arg", "out", "define", "spec_fragment", "Task", "Outputs", "__version__"]

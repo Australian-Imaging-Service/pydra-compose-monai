@@ -234,6 +234,54 @@ def test_synthetic_bundle_fixture_creates_valid_bundle(synthetic_bundle_dir: Pat
 
 
 # ---------------------------------------------------------------------------
+# spec_fragment
+# ---------------------------------------------------------------------------
+
+
+def test_spec_fragment_has_sources_and_sinks(metadata_json: Path):
+    from pydra.compose.monai.spec_parser import spec_fragment
+
+    frag = spec_fragment(metadata_json)
+    assert set(frag) == {"sources", "sinks", "parameters"}
+    assert "image" in frag["sources"]
+    assert "pred" in frag["sinks"]
+
+
+def test_spec_fragment_source_fields(metadata_json: Path):
+    from pydra.compose.monai.spec_parser import spec_fragment
+
+    frag = spec_fragment(metadata_json)
+    image = frag["sources"]["image"]
+    assert image["datatype"] == "medimage/nifti-gz-x"
+    assert image["path"] == "network_data_format/inputs/image"
+    assert "MRI" in image["help"]
+
+
+def test_spec_fragment_sink_fields(metadata_json: Path):
+    from pydra.compose.monai.spec_parser import spec_fragment
+
+    frag = spec_fragment(metadata_json)
+    pred = frag["sinks"]["pred"]
+    assert pred["datatype"] == "medimage/nifti-gz-x"
+    assert pred["path"] == "network_data_format/outputs/pred"
+
+
+def test_spec_fragment_any_type_maps_to_generic(tmp_path: Path):
+    from pydra.compose.monai.spec_parser import spec_fragment
+
+    metadata = {
+        "network_data_format": {
+            "inputs": {"feat": {"type": "tensor", "format": "embedding"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    frag = spec_fragment(p)
+    assert frag["sources"]["feat"]["datatype"] == "field/generic"
+
+
+# ---------------------------------------------------------------------------
 # Known limitations (see spec)
 # ---------------------------------------------------------------------------
 
