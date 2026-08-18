@@ -51,6 +51,11 @@ test = [
     "codecov",
     "pytorch-ignite",   # required by MONAI's SupervisedEvaluator (integration tests)
     "huggingface_hub",  # required by monai.bundle.download on MONAI >= 1.5.2 (network test)
+    # provides the `generate_sample_data` extra for fileformats.medimage types,
+    # i.e. NiftiGz.sample() / NiftiGzX.sample(). Without it those raise
+    # FileFormatsExtrasNotImplementedError and any test building a sample image
+    # fails, which is easy to misread as a bug in the code under test.
+    "fileformats-medimage-extras",
 ]
 
 [tool.hatch.version]
