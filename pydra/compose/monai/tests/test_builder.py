@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from fileformats.medimage import NiftiGzX
+from fileformats.medimage import NiftiGz, NiftiGzX
 from pydra.compose import monai
 from pydra.utils import get_fields
 
@@ -114,7 +114,7 @@ def test_define_rejects_non_path_non_class():
 def test_define_image_input_has_nifti_type(metadata_json: Path):
     TaskCls = monai.define(metadata_json)
     image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
-    assert image_field.type is NiftiGzX
+    assert image_field.type is NiftiGz
 
 
 def test_define_does_not_include_arch_field(metadata_json: Path):

@@ -3,7 +3,7 @@ import json
 import typing as ty
 import pytest
 from pathlib import Path
-from fileformats.medimage import NiftiGzX
+from fileformats.medimage import NiftiGz, NiftiGzX
 from pydra.compose.monai.spec_parser import parse_monai_spec, name_from_spec
 
 
@@ -56,7 +56,7 @@ def test_parse_inputs_from_metadata_json(metadata_json: Path):
     assert "image" in parsed_inputs
     field = parsed_inputs["image"]
     assert field.name == "image"
-    assert field.type is NiftiGzX
+    assert field.type is NiftiGz
     assert field.path == "network_data_format/inputs/image"
 
 
@@ -65,7 +65,7 @@ def test_parse_outputs_from_metadata_json(metadata_json: Path):
     assert "pred" in parsed_outputs
     field = parsed_outputs["pred"]
     assert field.name == "pred"
-    assert field.type is NiftiGzX
+    assert field.type is NiftiGz
     assert field.path == "network_data_format/outputs/pred"
 
 
@@ -161,7 +161,52 @@ def test_map_type_ct_modality(tmp_path: Path):
     p = tmp_path / "metadata.json"
     p.write_text(json.dumps(metadata))
     parsed_inputs, _ = parse_monai_spec(p)
-    assert parsed_inputs["image"].type is NiftiGzX
+    assert parsed_inputs["image"].type is NiftiGz
+
+
+def test_map_type_accepts_plain_nifti_without_sidecar(tmp_path: Path):
+    """A bundle input must accept plain ``.nii.gz`` with no JSON side-car.
+
+    MONAI bundles consume plain NIfTI — the Model Zoo's own sample data and
+    the Medical Segmentation Decathlon sets ship bare ``.nii.gz`` files.
+    Declaring ``NiftiGzX`` (which requires a BIDS-style JSON side-car) makes
+    a generated spec reject exactly the data the model was trained on.
+    """
+    nifti = tmp_path / "spleen_1.nii.gz"
+    # gzip magic bytes; contents are irrelevant to format identification
+    nifti.write_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 32)
+
+    metadata = {
+        "network_data_format": {
+            "inputs": {"image": {"type": "image", "modality": "CT"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    parsed_inputs, _ = parse_monai_spec(p)
+
+    # the declared type must admit a side-car-less file
+    parsed_inputs["image"].type(nifti)
+
+
+def test_map_type_still_accepts_nifti_with_sidecar(tmp_path: Path):
+    """Widening must not lose support for side-car data (e.g. dcm2niix output)."""
+    nifti = tmp_path / "img.nii.gz"
+    nifti.write_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 32)
+    (tmp_path / "img.json").write_text("{}")
+
+    metadata = {
+        "network_data_format": {
+            "inputs": {"image": {"type": "image", "modality": "CT"}},
+            "outputs": {},
+        }
+    }
+    p = tmp_path / "metadata.json"
+    p.write_text(json.dumps(metadata))
+    parsed_inputs, _ = parse_monai_spec(p)
+
+    parsed_inputs["image"].type(nifti)
 
 
 def test_map_type_segmentation_output(tmp_path: Path):
@@ -174,7 +219,7 @@ def test_map_type_segmentation_output(tmp_path: Path):
     p = tmp_path / "metadata.json"
     p.write_text(json.dumps(metadata))
     _, parsed_outputs = parse_monai_spec(p)
-    assert parsed_outputs["pred"].type is NiftiGzX
+    assert parsed_outputs["pred"].type is NiftiGz
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +297,7 @@ def test_spec_fragment_source_fields(metadata_json: Path):
 
     frag = spec_fragment(metadata_json)
     image = frag["sources"]["image"]
-    assert image["datatype"] == "medimage/nifti-gz-x"
+    assert image["datatype"] == "medimage/nifti-gz"
     assert image["path"] == "network_data_format/inputs/image"
     assert "MRI" in image["help"]
 
@@ -262,7 +307,7 @@ def test_spec_fragment_sink_fields(metadata_json: Path):
 
     frag = spec_fragment(metadata_json)
     pred = frag["sinks"]["pred"]
-    assert pred["datatype"] == "medimage/nifti-gz-x"
+    assert pred["datatype"] == "medimage/nifti-gz"
     assert pred["path"] == "network_data_format/outputs/pred"
 
 

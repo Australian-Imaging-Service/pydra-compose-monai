@@ -196,7 +196,10 @@ def test_from_job_resolves_output_from_save_transform(
     output_dir.mkdir()
     # Simulate what MONAI's SaveImaged would write: T1w_seg.nii.gz
     # (DEFAULT_INFERENCE has SaveImaged with output_postfix="seg", no output_ext -> .nii.gz)
-    expected = NiftiGzX.sample(stem="T1w_seg", dest_dir=output_dir)
+    # Sampled as NiftiGz, matching the pred field type: SaveImaged writes the
+    # image alone, so a NiftiGzX sample would add a .json side-car that no
+    # bundle produces and the comparison below would fail on the extra file.
+    expected = NiftiGz.sample(stem="T1w_seg", dest_dir=output_dir)
 
     TaskCls = monai.define(bundle)
     task = TaskCls(bundle=str(bundle), image=NiftiGz.sample(dest_dir=tmp_path, stem="T1w"))
@@ -502,13 +505,13 @@ def test_first_input_stem_uses_fileformats_extensions(tmp_path):
     )
     TaskCls = monai.define(bundle_meta)
 
-    # Verify the field is NiftiGzX-typed and carries the right extension.
-    from fileformats.medimage import NiftiGzX
+    # Verify the field is NiftiGz-typed and carries the right extension.
     image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
-    assert image_field.type is NiftiGzX
+    assert image_field.type is NiftiGz
 
-    # NiftiGzX validates file existence, magic number, and requires a BIDS JSON
-    # sidecar (.json).  Create both files so pydra can coerce the path to NiftiGzX.
+    # Sampled as NiftiGzX (which writes both the image and a .json side-car) to
+    # confirm side-car data is still accepted now the field type is the broader
+    # NiftiGz -- NiftiGzX is a subclass, so it must remain valid input.
     input_file = NiftiGzX.sample(dest_dir=tmp_path, stem="T1w")
     task = TaskCls(bundle=str(tmp_path), image=str(input_file))
 
@@ -546,30 +549,29 @@ def test_first_input_stem_fallback_for_unknown_extension(tmp_path):
 
 
 def test_from_job_uses_field_type_for_output_ext(make_synthetic_bundle, tmp_path):
-    """When inference.json omits output_ext, _from_job derives it from NiftiGzX.
+    """When inference.json omits output_ext, _from_job derives it from NiftiGz.
 
     The SaveImaged transform in DEFAULT_INFERENCE has no explicit output_ext,
-    so the default must come from the pred field's NiftiGzX type, not a
+    so the default must come from the pred field's NiftiGz type, not a
     hardcoded string.  We verify the mechanism by checking _default_ext_for
     returns the same extension that was used to locate the output file.
     """
     from pydra.compose.monai.tests.conftest import FakeJob
-    from fileformats.medimage import NiftiGzX
 
-    # Default synthetic bundle: pred output is NiftiGzX (format=segmentation)
+    # Default synthetic bundle: pred output is NiftiGz (format=segmentation)
     bundle = make_synthetic_bundle()
     output_dir = tmp_path / "out"
     output_dir.mkdir()
 
-    # The SaveImaged postfix is "seg" and there's no output_ext in DEFAULT_INFERENCE
-    expected = NiftiGzX.sample(dest_dir=output_dir, stem="T1w_seg")
+    # The SaveImaged postfix is "seg" and there's no output_ext in DEFAULT_INFERENCE.
+    # Sampled as NiftiGz to match the pred field type (SaveImaged writes no side-car).
+    expected = NiftiGz.sample(dest_dir=output_dir, stem="T1w_seg")
 
     TaskCls = monai.define(bundle)
 
-    # Confirm that the pred output field is NiftiGzX-typed
+    # Confirm that the pred output field is NiftiGz-typed
     pred_field = next(f for f in get_fields(TaskCls.Outputs) if f.name == "pred")
-    assert pred_field.type is NiftiGzX
-
+    assert pred_field.type is NiftiGz
 
     task = TaskCls(bundle=str(bundle), image=NiftiGzX.sample(dest_dir=tmp_path, stem="T1w"))
     job = FakeJob(task, output_dir)
