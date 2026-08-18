@@ -505,7 +505,7 @@ def test_first_input_stem_uses_fileformats_extensions(tmp_path):
     # Verify the field is NiftiGzX-typed and carries the right extension.
     from fileformats.medimage import NiftiGzX
     image_field = next(f for f in get_fields(TaskCls) if f.name == "image")
-    assert image_field.type is NiftiGzX
+    assert image_field.type is NiftiGz
 
     # NiftiGzX validates file existence, magic number, and requires a BIDS JSON
     # sidecar (.json).  Create both files so pydra can coerce the path to NiftiGzX.
@@ -568,7 +568,7 @@ def test_from_job_uses_field_type_for_output_ext(make_synthetic_bundle, tmp_path
 
     # Confirm that the pred output field is NiftiGzX-typed
     pred_field = next(f for f in get_fields(TaskCls.Outputs) if f.name == "pred")
-    assert pred_field.type is NiftiGzX
+    assert pred_field.type is NiftiGz
 
 
     task = TaskCls(bundle=str(bundle), image=NiftiGzX.sample(dest_dir=tmp_path, stem="T1w"))

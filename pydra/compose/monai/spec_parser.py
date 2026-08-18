@@ -106,8 +106,15 @@ def _map_type(spec: dict) -> type:
 
     Mirrors reader-selection in monai.data image readers:
     - DICOM → fileformats.medimage.DicomSeries
-    - NIfTI images / segmentations / MRI / CT → fileformats.medimage.NiftiGzX
+    - NIfTI images / segmentations / MRI / CT → fileformats.medimage.NiftiGz
     - Unknown → ty.Any
+
+    NIfTI maps to ``NiftiGz`` rather than ``NiftiGzX``: bundles consume plain
+    ``.nii.gz`` (the Model Zoo samples and the Medical Segmentation Decathlon
+    sets ship bare files), and ``NiftiGzX`` additionally *requires* a
+    BIDS-style JSON side-car, so declaring it makes a generated spec reject
+    exactly the data these models were trained on. ``NiftiGzX`` is a subclass
+    of ``NiftiGz``, so side-car data (e.g. dcm2niix output) is still accepted.
     """
     fmt = (spec.get("format") or "").lower()
     data_type = (spec.get("type") or "").lower()
@@ -126,8 +133,8 @@ def _map_type(spec: dict) -> type:
         or modality in ("ct", "mri", "mr", "pt", "nm")
     ):
         try:
-            from fileformats.medimage import NiftiGzX
-            return NiftiGzX
+            from fileformats.medimage import NiftiGz
+            return NiftiGz
         except ImportError:
             pass
 
