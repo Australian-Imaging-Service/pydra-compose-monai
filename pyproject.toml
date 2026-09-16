@@ -55,7 +55,16 @@ test = [
     # i.e. NiftiGz.sample() / NiftiGzX.sample(). Without it those raise
     # FileFormatsExtrasNotImplementedError and any test building a sample image
     # fails, which is easy to misread as a bug in the code under test.
-    "fileformats-medimage-extras",
+    #
+    # Pinned together with its base package: fileformats-medimage-extras
+    # requires fileformats-medimage without a version constraint, so pip is
+    # free to pair a new extras with an older base. That skew is not a clean
+    # failure -- mismatched hook signatures (e.g. deidentify) raise TypeError
+    # at import time and take down tests unrelated to the mismatch. Below
+    # 0.13.1, NiftiGzX.sample() also emits no .json side-car and then fails
+    # its own format validation.
+    "fileformats-medimage >=0.13.1",
+    "fileformats-medimage-extras >=0.13.1",
 ]
 
 [tool.hatch.version]
