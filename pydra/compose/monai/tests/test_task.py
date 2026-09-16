@@ -209,6 +209,99 @@ def test_from_job_resolves_output_from_save_transform(
     assert outputs.pred == expected
 
 
+def test_from_job_handles_scalar_keys_and_separate_folder(
+    make_synthetic_bundle, tmp_path
+):
+    """Real Model Zoo bundles write ``"keys": "pred"`` as a bare string and set
+    ``separate_folder: true``, so the output lands one directory deeper.
+
+    Iterating a bare string yields 'p','r','e','d', which never matches the
+    field name, and a flat-directory lookup misses the nested file. Both shapes
+    are taken from spleen_ct_segmentation v0.6.1.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        },
+        inference_overrides={
+            "postprocessing": {
+                "transforms": [
+                    {
+                        "_target_": "SaveImaged",
+                        "keys": "pred",  # bare string, not a list
+                        "output_dir": "@output_dir",
+                        "output_postfix": "seg",
+                        "separate_folder": True,  # nests output one level deep
+                    }
+                ]
+            }
+        },
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    # separate_folder=True => out/T1w/T1w_seg.nii.gz
+    nested = output_dir / "T1w"
+    nested.mkdir()
+    expected = NiftiGz.sample(stem="T1w_seg", dest_dir=nested)
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(bundle=str(bundle), image=NiftiGz.sample(dest_dir=tmp_path, stem="T1w"))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    assert outputs.pred == expected
+
+
+def test_from_job_resolves_at_references_in_save_transform(
+    make_synthetic_bundle, tmp_path
+):
+    """Real bundles express SaveImaged args as ``@``-references
+    (``"output_postfix": "@output_postfix"``). Reading raw JSON yields the
+    literal string "@output_postfix" instead of its value, so the filename is
+    built wrong. The resolved config must be consulted instead.
+    """
+    from pydra.compose.monai.tests.conftest import FakeJob
+
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"image": {"type": "generic", "modality": ""}},
+            }
+        },
+        inference_overrides={
+            "output_postfix": "trans",
+            "output_ext": ".nii.gz",
+            "separate_folder": False,
+            "postprocessing": {
+                "transforms": [
+                    {
+                        "_target_": "SaveImaged",
+                        "keys": ["pred"],
+                        "output_dir": "@output_dir",
+                        "output_postfix": "@output_postfix",
+                        "output_ext": "@output_ext",
+                        "separate_folder": "@separate_folder",
+                    }
+                ]
+            },
+        },
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    expected = NiftiGz.sample(stem="T1w_trans", dest_dir=output_dir)
+
+    TaskCls = monai.define(bundle)
+    task = TaskCls(bundle=str(bundle), image=NiftiGz.sample(dest_dir=tmp_path, stem="T1w"))
+    job = FakeJob(task, output_dir)
+
+    outputs = TaskCls.Outputs._from_job(job)
+    assert outputs.pred == expected
+
+
 def test_from_job_does_not_match_unrelated_files(
     make_synthetic_bundle, tmp_path
 ):
@@ -283,100 +376,111 @@ def test_from_job_leaves_field_unset_when_save_transform_missing(
 # ---------------------------------------------------------------------------
 
 
-def test_run_loads_metadata_and_inference_configs(
-    mock_config_parser_with_task, tmp_path
-):
-    bundle, TaskCls, parser, evaluator = mock_config_parser_with_task
-    output_dir = tmp_path / "out"
-
-    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
-
-    from pydra.compose.monai.tests.conftest import FakeJob
-
-    job = FakeJob(task, output_dir)
-    task._run(job)
-
-    parser.read_meta.assert_called_once_with(
-        str(bundle / "configs" / "metadata.json")
-    )
-    parser.read_config.assert_called_once_with(
-        str(bundle / "configs" / "inference.json")
-    )
+GENERIC_INPUT = {
+    "network_data_format": {"inputs": {"image": {"type": "generic", "modality": ""}}}
+}
 
 
-def test_run_sets_dataset_data_from_inputs(
-    mock_config_parser_with_task, tmp_path
-):
-    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
-    output_dir = tmp_path / "out"
+@pytest.fixture
+def generic_bundle(make_synthetic_bundle):
+    """Bundle whose image input is untyped, so tests can pass plain path strings."""
+    return make_synthetic_bundle(metadata_overrides=GENERIC_INPUT)
 
-    task = TaskCls(
-        bundle=str(bundle),
-        image="/data/T1w.nii.gz",
-    )
 
-    from pydra.compose.monai.tests.conftest import FakeJob
+def test_build_workflow_reads_bundle_configs(generic_bundle, tmp_path):
+    """The workflow is pointed at the bundle's own inference.json / metadata.json."""
+    TaskCls = monai.define(generic_bundle)
+    task = TaskCls(bundle=str(generic_bundle), image="dummy.nii.gz")
 
-    job = FakeJob(task, output_dir)
-    task._run(job)
+    workflow = task._build_workflow(generic_bundle, tmp_path / "out", task)
 
-    # parser["dataset#data"] should have been set to a one-element list of dicts
-    assert "dataset#data" in parser.set_calls
-    data = parser.set_calls["dataset#data"]
+    assert workflow.config_root_path == generic_bundle / "configs"
+    assert str(workflow.meta_file) == str(generic_bundle / "configs" / "metadata.json")
+
+
+def test_build_workflow_sets_dataset_data_from_inputs(generic_bundle, tmp_path):
+    TaskCls = monai.define(generic_bundle)
+    task = TaskCls(bundle=str(generic_bundle), image="/data/T1w.nii.gz")
+
+    workflow = task._build_workflow(generic_bundle, tmp_path / "out", task)
+
+    data = workflow.parser["dataset#data"]
     assert isinstance(data, list)
     assert len(data) == 1
     assert data[0]["image"] == "/data/T1w.nii.gz"
 
 
-def test_run_sets_output_dir(
-    mock_config_parser_with_task, tmp_path
-):
-    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
+def test_build_workflow_sets_output_dir_and_bundle_root(generic_bundle, tmp_path):
+    """bundle_root must point at the bundle, not the CWD, or the checkpoint path
+    "$@bundle_root + '/models/model.pt'" resolves against the wrong directory."""
+    TaskCls = monai.define(generic_bundle)
+    task = TaskCls(bundle=str(generic_bundle), image="dummy.nii.gz")
     output_dir = tmp_path / "out"
 
-    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
+    workflow = task._build_workflow(generic_bundle, output_dir, task)
+
+    assert workflow.parser["output_dir"] == str(output_dir)
+    assert workflow.parser["bundle_root"] == str(generic_bundle)
+
+
+def test_run_drives_the_bundle_lifecycle(generic_bundle, tmp_path, monkeypatch):
+    """_run must go through initialize -> run -> finalize.
+
+    initialize is what loads the checkpoint; skipping it leaves the network
+    randomly initialised while still producing well-formed output.
+    """
+    from unittest.mock import MagicMock
+
+    TaskCls = monai.define(generic_bundle)
+    task = TaskCls(bundle=str(generic_bundle), image="dummy.nii.gz")
+    output_dir = tmp_path / "out"
+
+    workflow = MagicMock(name="ConfigWorkflow_instance")
+    workflow.parser.__contains__.return_value = True
+    monkeypatch.setattr(type(task), "_build_workflow", lambda self, b, o, t: workflow)
 
     from pydra.compose.monai.tests.conftest import FakeJob
 
-    job = FakeJob(task, output_dir)
-    task._run(job)
+    task._run(FakeJob(task, output_dir))
 
-    assert parser.set_calls.get("output_dir") == str(output_dir)
+    workflow.initialize.assert_called_once()
+    workflow.run.assert_called_once()
+    workflow.finalize.assert_called_once()
     assert output_dir.exists()
 
 
-def test_run_calls_evaluator_run_once(
-    mock_config_parser_with_task, tmp_path
-):
-    bundle, TaskCls, _parser, evaluator = mock_config_parser_with_task
-    output_dir = tmp_path / "out"
-
-    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
-
-    from pydra.compose.monai.tests.conftest import FakeJob
-
-    job = FakeJob(task, output_dir)
-    task._run(job)
-
-    evaluator.run.assert_called_once()
-
-
-def test_run_excludes_base_attrs_from_dataset_data(
-    mock_config_parser_with_task, tmp_path
-):
+def test_build_workflow_excludes_base_attrs_from_dataset_data(generic_bundle, tmp_path):
     """bundle must not appear as a key in dataset#data."""
-    bundle, TaskCls, parser, _evaluator = mock_config_parser_with_task
-    output_dir = tmp_path / "out"
+    TaskCls = monai.define(generic_bundle)
+    task = TaskCls(bundle=str(generic_bundle), image="dummy.nii.gz")
 
-    task = TaskCls(bundle=str(bundle), image="dummy.nii.gz")
+    workflow = task._build_workflow(generic_bundle, tmp_path / "out", task)
 
-    from pydra.compose.monai.tests.conftest import FakeJob
+    assert "bundle" not in workflow.parser["dataset#data"][0]
 
-    job = FakeJob(task, output_dir)
-    task._run(job)
 
-    data = parser.set_calls["dataset#data"]
-    assert "bundle" not in data[0]
+def test_build_workflow_binds_input_to_bundle_image_key(
+    make_synthetic_bundle, tmp_path
+):
+    """A task field named differently from the bundle's image_key must still
+    reach preprocessing, which reads the bundle's own key."""
+    bundle = make_synthetic_bundle(
+        metadata_overrides={
+            "network_data_format": {
+                "inputs": {"scan": {"type": "generic", "modality": ""}},
+            }
+        },
+        inference_overrides={"image_key": "image"},
+    )
+    TaskCls = monai.define(bundle)
+    task = TaskCls(bundle=str(bundle), scan="/data/T1w.nii.gz")
+
+    workflow = task._build_workflow(bundle, tmp_path / "out", task)
+
+    entry = workflow.parser["dataset#data"][0]
+    assert entry == {"image": "/data/T1w.nii.gz"}, (
+        "input should be bound to the bundle's image_key, not the field name"
+    )
 
 
 # ---------------------------------------------------------------------------
