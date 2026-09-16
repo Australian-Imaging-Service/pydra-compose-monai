@@ -211,6 +211,11 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         parser.read_meta(str(bundle_dir / "configs" / "metadata.json"))
         parser.read_config(str(bundle_dir / "configs" / "inference.json"))
 
+        # bundle_root defaults to "." in most bundles, so every path derived
+        # from it (notably the checkpoint at "$@bundle_root + '/models/model.pt'")
+        # would otherwise resolve against the process CWD rather than the bundle.
+        parser["bundle_root"] = str(bundle_dir)
+
         # Build the dataset entries from job inputs, keyed by field name.
         # Each entry in network_data_format.inputs becomes a key in the data dict.
         data_entry: dict[str, str] = {}
@@ -226,7 +231,26 @@ class MonaiTask(base.Task[MonaiOutputsType]):
 
         parser["output_dir"] = str(output_dir)
 
+        # Checkpoints are frequently saved on CUDA. On a CPU-only host,
+        # CheckpointLoader deserialises to the device recorded in the file
+        # unless map_location is overridden -- setting "device" alone is not
+        # enough, as CheckpointLoader takes its own map_location.
+        import torch
+
+        if not torch.cuda.is_available():
+            parser["device"] = "$torch.device('cpu')"
+            if "checkpointloader" in parser:
+                parser["checkpointloader#map_location"] = "$torch.device('cpu')"
+
         logger.info("Running MONAI bundle inference from %s", bundle_dir)
+
+        # The "initialize" section is what loads the checkpoint into the
+        # network (via checkpointloader). Skipping it leaves the network with
+        # its random initialisation, which still produces well-formed but
+        # meaningless output.
+        if "initialize" in parser:
+            parser.get_parsed_content("initialize", instantiate=True)
+
         evaluator = parser.get_parsed_content("evaluator", instantiate=True)
         evaluator.run()
 
