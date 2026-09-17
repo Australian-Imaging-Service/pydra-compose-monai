@@ -230,8 +230,29 @@ class MonaiTask(base.Task[MonaiOutputsType]):
         """Run inference using a MONAI bundle.
 
         Loads configs/inference.json from the bundle directory indicated by
-        ``bundle``, overrides the dataset input paths and output
-        directory with values from the job, then runs the bundle evaluator.
+        ``bundle``, overrides the dataset input paths and output directory
+        with values from the job, then drives the bundle's own
+        ``initialize -> run -> finalize`` lifecycle via ``ConfigWorkflow``.
+
+        Notes
+        -----
+        Bundles commonly set ``num_workers`` above zero, so inference spawns
+        DataLoader worker processes. On platforms whose default start method
+        is ``spawn`` (macOS and Windows), each worker re-imports the calling
+        script's ``__main__`` module, so a caller must keep side effects out
+        of module scope::
+
+            if __name__ == "__main__":
+                main()
+
+        Without the guard, statements at module level re-run once per worker
+        and the workers die, surfacing as ``DataLoader worker (pid N) exited
+        unexpectedly``. That message names the workers but rarely the cause:
+        the worker's own traceback (printed above it, usually repeated per
+        worker) carries the real exception. Torch suggests rerunning with
+        ``num_workers=0``, which is a debugging aid rather than a fix -- it
+        stops the re-import, so the symptom disappears while the caller's bug
+        remains and data loading becomes serial.
 
         Parameters
         ----------
