@@ -69,12 +69,9 @@ def parse_monai_spec(
     spec_path = Path(spec_path)
     if not spec_path.exists():
         raise FileNotFoundError(errno.ENOENT, "MONAI bundle not found", str(spec_path))
-    metadata_path = (
-        spec_path / "configs" / "metadata.json" if spec_path.is_dir() else spec_path
-    )
 
     parser = ConfigParser()
-    parser.read_meta(str(metadata_path))
+    parser.read_meta(str(_metadata_path(Path(spec_path))))
 
     raw_inputs = parser.get_parsed_content(
         "_meta_#network_data_format#inputs", instantiate=False
@@ -175,38 +172,56 @@ def _output_help(spec: dict) -> str:
     return ", ".join(parts) if parts else "Output image"
 
 
+def _metadata_path(spec_path: Path) -> Path:
+    """The metadata.json of a bundle, given either it or the bundle root directory"""
+    return spec_path / "configs" / "metadata.json" if spec_path.is_dir() else spec_path
+
+
 def name_from_spec(spec_path: Path | str) -> str:
     """Derive a valid Python class name from a MONAI bundle path or metadata.
+
+    The ``name`` field of the bundle's metadata is used if present, otherwise the
+    name of the bundle directory (or of the metadata file, if it isn't within a
+    bundle's ``configs`` directory). The latter is also used if the bundle doesn't
+    exist on this host, e.g. because it only exists within an image being built.
 
     Parameters
     ----------
     spec_path : Path | str
         Path to the metadata.json or bundle root directory.
+
+    Raises
+    ------
+    Exception
+        if the metadata exists but can't be parsed, rather than silently falling
+        back to a different name
     """
-    ConfigParser = _import_monai_bundle().ConfigParser
-
     spec_path = Path(spec_path)
-    metadata_path = (
-        spec_path / "configs" / "metadata.json" if spec_path.is_dir() else spec_path
-    )
-
-    try:
-        parser = ConfigParser()
+    metadata_path = _metadata_path(spec_path)
+    if metadata_path.is_file():
+        parser = _import_monai_bundle().ConfigParser()
         parser.read_meta(str(metadata_path))
-        raw_name = parser.get_parsed_content("_meta_#name", instantiate=False)
+        raw_name = parser.get_parsed_content(
+            "_meta_#name", instantiate=False, default=None
+        )
         if raw_name:
             return _to_class_name(str(raw_name))
-    except Exception:
-        pass
-
-    stem = spec_path.stem if spec_path.is_file() else spec_path.name
-    return _to_class_name(stem)
+    if spec_path.suffix.lower() not in (".json", ".yaml", ".yml"):
+        return _to_class_name(spec_path.name)  # the bundle root directory
+    if spec_path.parent.name == "configs":
+        # <bundle_root>/configs/metadata.json
+        return _to_class_name(spec_path.parent.parent.name)
+    return _to_class_name(spec_path.stem)
 
 
 def _to_class_name(s: str) -> str:
     """Convert an arbitrary string to a valid CamelCase Python identifier."""
     words = re.split(r"[^a-zA-Z0-9]+", s)
-    return "".join(w.capitalize() for w in words if w)
+    name = "".join(w.capitalize() for w in words if w)
+    if not name.isidentifier():
+        # e.g. starts with a digit ('3d_unet') or had no alphanumerics at all
+        name = "Bundle" + name
+    return name
 
 
 def spec_fragment(spec_path: Path | str) -> dict[str, dict[str, dict]]:
