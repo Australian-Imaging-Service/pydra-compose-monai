@@ -98,6 +98,15 @@ def test_output_help_contains_format(metadata_json: Path):
     assert "segmentation" in parsed_outputs["pred"].help
 
 
+def test_parse_missing_bundle_raises_file_not_found(tmp_path: Path):
+    """A bundle that doesn't exist (e.g. one only present within the image being
+    built) is reported as such, with its path, rather than as an invalid file type"""
+    missing = tmp_path / "not-a-bundle"
+    with pytest.raises(FileNotFoundError) as excinfo:
+        parse_monai_spec(missing)
+    assert excinfo.value.filename == str(missing)
+
+
 # ---------------------------------------------------------------------------
 # name_from_spec
 # ---------------------------------------------------------------------------
