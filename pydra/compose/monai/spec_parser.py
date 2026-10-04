@@ -1,5 +1,6 @@
 """Parse MONAI bundle metadata.json into Pydra arg/out field definitions."""
 
+import errno
 import importlib
 import re
 import sys
@@ -20,15 +21,20 @@ def _import_monai_bundle() -> types.ModuleType:
     """
     # Find path entries that would cause pydra/compose/monai to shadow 'monai'
     _this_pkg = str(Path(__file__).parent.parent)  # .../pydra/compose
-    shadow_entries = [p for p in sys.path if Path(p).resolve() == Path(_this_pkg).resolve()]
+    shadow_entries = [
+        p for p in sys.path if Path(p).resolve() == Path(_this_pkg).resolve()
+    ]
 
     for p in shadow_entries:
         sys.path.remove(p)
 
     # Also clear any stale sys.modules entries from a previous shadow import
-    stale = [k for k in list(sys.modules)
-             if (k == "monai" or k.startswith("monai."))
-             and getattr(sys.modules[k], "__file__", "").startswith(_this_pkg)]
+    stale = [
+        k
+        for k in list(sys.modules)
+        if (k == "monai" or k.startswith("monai."))
+        and getattr(sys.modules[k], "__file__", "").startswith(_this_pkg)
+    ]
     for k in stale:
         del sys.modules[k]
 
@@ -61,6 +67,8 @@ def parse_monai_spec(
     ConfigParser = _import_monai_bundle().ConfigParser
 
     spec_path = Path(spec_path)
+    if not spec_path.exists():
+        raise FileNotFoundError(errno.ENOENT, "MONAI bundle not found", str(spec_path))
     metadata_path = (
         spec_path / "configs" / "metadata.json" if spec_path.is_dir() else spec_path
     )
@@ -123,6 +131,7 @@ def _map_type(spec: dict) -> type:
     if fmt == "dicom" or data_type == "dicom_series":
         try:
             from fileformats.medimage import DicomSeries
+
             return DicomSeries
         except ImportError:
             pass
@@ -134,6 +143,7 @@ def _map_type(spec: dict) -> type:
     ):
         try:
             from fileformats.medimage import NiftiGz
+
             return NiftiGz
         except ImportError:
             pass
