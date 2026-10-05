@@ -255,6 +255,57 @@ def test_name_from_spec_handles_missing_metadata_name(tmp_path: Path):
     assert name.isidentifier()
 
 
+def test_name_from_spec_missing_name_in_bundle_uses_bundle_dir(tmp_path: Path):
+    """Given the metadata.json of a bundle without a name, the bundle directory is
+    used, rather than the stem of the metadata file (which would always be
+    'Metadata')"""
+    configs = tmp_path / "spleen_ct_segmentation" / "configs"
+    configs.mkdir(parents=True)
+    (configs / "metadata.json").write_text(json.dumps({"version": "0.1"}))
+    assert name_from_spec(configs / "metadata.json") == "SpleenCtSegmentation"
+    assert name_from_spec(configs.parent) == "SpleenCtSegmentation"
+
+
+def test_name_from_spec_malformed_metadata_raises(tmp_path: Path):
+    """A metadata file that can't be parsed is reported, rather than the name
+    silently falling back to the directory name"""
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    (configs / "metadata.json").write_text("{not json")
+    with pytest.raises(json.JSONDecodeError):
+        name_from_spec(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "spec_path,expected",
+    [
+        # a bundle that only exists within the image being built
+        ("/monai-bundles/spleen_ct_segmentation", "SpleenCtSegmentation"),
+        (
+            "/monai-bundles/spleen_ct_segmentation/configs/metadata.json",
+            "SpleenCtSegmentation",
+        ),
+    ],
+)
+def test_name_from_spec_missing_bundle_uses_path(spec_path: str, expected: str):
+    assert name_from_spec(spec_path) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("3d_unet", "Bundle3dUnet"),  # can't start with a digit
+        ("---", "Bundle"),  # nothing left once punctuation is removed
+        ("whole brain seg", "WholeBrainSeg"),
+    ],
+)
+def test_to_class_name_is_always_an_identifier(raw: str, expected: str):
+    from pydra.compose.monai.spec_parser import _to_class_name
+
+    assert _to_class_name(raw) == expected
+    assert expected.isidentifier()
+
+
 # ---------------------------------------------------------------------------
 # _import_monai_bundle — sys.path shadow guard
 # ---------------------------------------------------------------------------
