@@ -38,7 +38,7 @@ jobs:
       run: |
         pytest -sv --doctest-modules pydra/compose/monai \
             --cov pydra.compose.monai --cov-report xml
-    - uses: codecov/codecov-action@v3
+    - uses: codecov/codecov-action@v7
       if: ${{ always() }}
 
 
