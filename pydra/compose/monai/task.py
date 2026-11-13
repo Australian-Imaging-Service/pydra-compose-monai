@@ -4,7 +4,7 @@ import typing as ty
 import logging
 from pathlib import Path
 from fileformats.core import from_paths
-from fileformats.core.exceptions import FormatRecognitionError
+from fileformats.core.exceptions import FormatMismatchError
 from fileformats.medimage import MedicalImagingData
 from pydra.compose import base
 from pydra.utils import get_fields
@@ -198,7 +198,7 @@ def _first_input_stem(task) -> "str | None":
         if not isinstance(val, MedicalImagingData):
             try:
                 val = from_paths([val], *MedicalImagingData.subclasses())
-            except FormatRecognitionError:
+            except FormatMismatchError:
                 return Path(val).parent / Path(val).name.split('.')[0]
         return val.stem
     return None
